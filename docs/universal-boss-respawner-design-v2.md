@@ -62,7 +62,7 @@ data/<namespace>/boss_respawner/entries/*.json
     "retry_interval_ticks": 4
   },
   "duplicate": {
-    "mode": "keep_existing",
+    "mode": "allow_multiple",
     "search_radius": 16
   }
 }
@@ -83,7 +83,7 @@ data/<namespace>/boss_respawner/entries/*.json
 | `spawn.max_attempts` | 最大尝试次数，默认 20；失败后重置为未点亮 |
 | `spawn.retry_interval_ticks` | 失败后重试间隔，默认 4 tick |
 | `spawn.nbt` | 生成实体的额外 SNBT |
-| `duplicate.mode` | `keep_existing` / `replace_existing` / `allow_multiple` |
+| `duplicate.mode` | `keep_existing` / `replace_existing` / `allow_multiple`；默认 `allow_multiple`，与灾变一致不做重复检查 |
 
 **已移除：**
 - `placement.mode`（不再支持 home / death_or_home）
@@ -119,7 +119,8 @@ data/<namespace>/boss_respawner/entries/*.json
 ```toml
 [general]
 enableMod = true
-logPlacement = true
+# Debug logging: prints Boss respawner debug information when enabled.
+logPlacement = false
 
 [compat]
 foreignCageBlockIds = ["cataclysm:boss_respawner"]

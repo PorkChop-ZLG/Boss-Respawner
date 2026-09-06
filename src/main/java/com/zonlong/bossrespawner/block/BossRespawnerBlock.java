@@ -1,6 +1,7 @@
 package com.zonlong.bossrespawner.block;
 
 import com.mojang.serialization.MapCodec;
+import com.zonlong.bossrespawner.DebugLog;
 import com.zonlong.bossrespawner.blockentity.BossRespawnerBlockEntity;
 import com.zonlong.bossrespawner.init.ModBlockEntities;
 
@@ -55,13 +56,21 @@ public class BossRespawnerBlock extends BaseEntityBlock {
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos,
                                              Player player, InteractionHand hand, BlockHitResult hitResult) {
         if (state.getValue(LIT)) {
+            DebugLog.info("Right-click ignored: respawner is already lit at {}", pos);
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
 
-        if (!(level.getBlockEntity(pos) instanceof BossRespawnerBlockEntity be) || !be.matchesKeyItem(stack)) {
+        if (!(level.getBlockEntity(pos) instanceof BossRespawnerBlockEntity be)) {
+            DebugLog.info("Right-click ignored: no BossRespawnerBlockEntity at {}", pos);
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (!be.matchesKeyItem(stack)) {
+            DebugLog.info("Right-click ignored: key item mismatch at {} (stack={}, required={})",
+                    pos, stack, be.getKeyItemId());
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
 
+        DebugLog.info("Right-click accepted: activating respawner at {} with stack={}", pos, stack);
         if (!level.isClientSide) {
             if (!player.getAbilities().instabuild && be.shouldConsume()) {
                 stack.shrink(be.getKeyAmount());

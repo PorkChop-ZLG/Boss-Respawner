@@ -12,10 +12,10 @@ public final class Config {
             .translation("boss_respawner.configuration.general.enableMod")
             .define("general.enableMod", true);
 
-    public static final ModConfigSpec.BooleanValue LOG_PLACEMENT = BUILDER
-            .comment("Log when a respawn cage is placed, skipped, or spawned.")
-            .translation("boss_respawner.configuration.general.logPlacement")
-            .define("general.logPlacement", true);
+    public static final ModConfigSpec.BooleanValue DEBUG_INFO = BUILDER
+            .comment("Debug logging. When true, prints debug information about Boss respawner placement and spawning to the log.")
+            .translation("boss_respawner.configuration.general.debugInfo")
+            .define("general.logPlacement", false);
 
     public static final ModConfigSpec.ConfigValue<List<? extends String>> FOREIGN_CAGE_BLOCK_IDS = BUILDER
             .comment("Block IDs that should be treated as other mods' respawn cages/altars.",

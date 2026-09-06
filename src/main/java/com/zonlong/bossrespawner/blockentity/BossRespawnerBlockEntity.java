@@ -1,5 +1,6 @@
 package com.zonlong.bossrespawner.blockentity;
 
+import com.zonlong.bossrespawner.DebugLog;
 import com.zonlong.bossrespawner.UniversalBossRespawner;
 import com.zonlong.bossrespawner.block.BossRespawnerBlock;
 
@@ -93,17 +94,24 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         }
 
         be.litTicks = 0;
+        DebugLog.info("Attempting spawn from lit respawner at {}: entity={} attempts={} maxAttempts={}",
+                pos, be.entityTypeId, be.attempts, be.maxAttempts);
         if (be.trySpawn((ServerLevel) level, pos)) {
             be.spawned = true;
+            DebugLog.info("Spawn succeeded from respawner at {}: entity={}; destroying cage", pos, be.entityTypeId);
             level.destroyBlock(pos, false);
         } else {
             be.attempts++;
+            DebugLog.info("Spawn failed from respawner at {}: entity={} attempts={} maxAttempts={}",
+                    pos, be.entityTypeId, be.attempts, be.maxAttempts);
             if (be.maxAttempts > 0 && be.attempts >= be.maxAttempts) {
                 be.resetAfterMaxAttempts((ServerLevel) level);
             } else {
                 // Reuse litTicks as a countdown for the next retry.
                 be.litTicks = Math.max(0, be.delayTicks - be.retryIntervalTicks);
                 be.setChanged();
+                DebugLog.info("Scheduled retry for respawner at {}: next attempts in {} ticks",
+                        pos, Math.max(1, be.retryIntervalTicks));
             }
         }
     }
@@ -123,6 +131,8 @@ public class BossRespawnerBlockEntity extends BlockEntity {
 
     public void activate(Level level) {
         if (level.getBlockState(worldPosition).hasProperty(BossRespawnerBlock.LIT)) {
+            DebugLog.info("Activating respawner at {}: entity={} key={} delay={} maxAttempts={}",
+                    worldPosition, entityTypeId, keyItemId, delayTicks, maxAttempts);
             level.setBlock(worldPosition, level.getBlockState(worldPosition).setValue(BossRespawnerBlock.LIT, true), 2);
             litTicks = 0;
             attempts = 0;
@@ -143,12 +153,15 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         EntityType<?> type = getCachedEntityType();
         if (type == null) {
             UniversalBossRespawner.LOGGER.warn("Cannot find entity type {} for respawner at {}", entityTypeId, pos);
+            DebugLog.info("trySpawn failed: cached entity type is null for entityId={} at {}", entityTypeId, pos);
             return false;
         }
 
         Vec3 spawnPos = Vec3.atLowerCornerWithOffset(
                 pos.offset(spawnOffset[0], spawnOffset[1], spawnOffset[2]),
                 0.5D, 0.0D, 0.5D);
+        DebugLog.info("trySpawn: entityId={} type={} pos={} spawnPos={} count={} finalizeSpawn={} nbtEmpty={}",
+                entityTypeId, type, pos, spawnPos, count, finalizeSpawn, spawnNbt.isEmpty());
 
         // Create all entities first so a late creation failure doesn't leave partial spawns.
         List<Entity> created = new ArrayList<>();
@@ -156,6 +169,7 @@ public class BossRespawnerBlockEntity extends BlockEntity {
             for (int i = 0; i < count; i++) {
                 Entity entity = type.create(serverLevel);
                 if (entity == null) {
+                    DebugLog.info("trySpawn failed: type.create returned null for {} at {}", entityTypeId, pos);
                     discardAll(created);
                     return false;
                 }
@@ -167,18 +181,22 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                     mob.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(pos), MobSpawnType.SPAWNER, null);
                 }
                 created.add(entity);
+                DebugLog.info("trySpawn created entity #{} of type {} for {}", i, entity.getType(), entityTypeId);
             }
 
             for (Entity entity : created) {
                 if (!serverLevel.addFreshEntity(entity)) {
+                    DebugLog.info("trySpawn failed: addFreshEntity rejected entity {} for {}", entity, entityTypeId);
                     discardAll(created);
                     return false;
                 }
             }
+            DebugLog.info("trySpawn added {} fresh entities for {}", created.size(), entityTypeId);
             return true;
         } catch (Exception e) {
             discardAll(created);
             UniversalBossRespawner.LOGGER.warn("Failed to spawn {} from respawner at {}", entityTypeId, pos, e);
+            DebugLog.info("trySpawn caught exception for {} at {}: {}", entityTypeId, pos, e.toString());
             return false;
         }
     }
@@ -192,6 +210,8 @@ public class BossRespawnerBlockEntity extends BlockEntity {
     }
 
     private void resetAfterMaxAttempts(ServerLevel level) {
+        DebugLog.info("Resetting respawner after max attempts at {}: entity={} attempts={} maxAttempts={}",
+                worldPosition, entityTypeId, attempts, maxAttempts);
         attempts = 0;
         litTicks = 0;
 
@@ -234,6 +254,9 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         this.spawned = false;
         this.displayEntity = null;
         invalidateCaches();
+        DebugLog.info("setSpawnerData at {}: entity={} key={} amount={} consume={} delay={} maxAttempts={}",
+                worldPosition, this.entityTypeId, this.keyItemId, this.keyAmount,
+                this.consumeKeyItem, this.delayTicks, this.maxAttempts);
         setChanged();
     }
 
@@ -332,6 +355,8 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         this.attempts = tag.getInt(TAG_ATTEMPTS);
         this.spawned = tag.getBoolean(TAG_SPAWNED);
         invalidateCaches();
+        DebugLog.info("Loaded respawner data at {}: entity={} key={} litTicks={} attempts={} spawned={}",
+                worldPosition, this.entityTypeId, this.keyItemId, this.litTicks, this.attempts, this.spawned);
     }
 
     @Override

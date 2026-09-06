@@ -1,6 +1,7 @@
 package com.zonlong.bossrespawner.event;
 
 import com.zonlong.bossrespawner.Config;
+import com.zonlong.bossrespawner.DebugLog;
 import com.zonlong.bossrespawner.UniversalBossRespawner;
 import com.zonlong.bossrespawner.data.RespawnEntry;
 import com.zonlong.bossrespawner.data.RespawnRuleManager;
@@ -37,24 +38,37 @@ public final class LivingDeathHandler {
             return;
         }
 
+        ResourceLocation entityId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+        DebugLog.info("LivingDeathEvent: entity={} type={} entityId={} position={} dimension={}",
+                entity, entity.getType(), entityId, entity.blockPosition(), serverLevel.dimension().location());
+
         RespawnEntry entry = RespawnRuleManager.INSTANCE.find(entity.getType());
         if (entry == null) {
+            DebugLog.info("No respawn rule found for entityId={}; manager currently has {} mapped entries",
+                    entityId, RespawnRuleManager.INSTANCE.getByEntity().size());
             return;
         }
+
+        DebugLog.info("Found respawn rule id={} for entityId={}", entry.id(), entityId);
 
         if (!matchesDeathCondition(entity, event.getSource(), entry.death())) {
+            DebugLog.info("Death conditions not met for entityId={} rule={} (playerKillOnly={}, dimensions={}, biomes={})",
+                    entityId, entry.id(), entry.death().playerKillOnly(), entry.death().dimensions(), entry.death().biomes());
             return;
         }
 
-        ResourceLocation entityId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
         if (entityId == null) {
+            DebugLog.info("EntityId is null for entity type {}; cannot place respawn cage", entity.getType());
             return;
         }
 
+        DebugLog.info("Death conditions met; attempting to place respawn cage for entityId={} rule={}", entityId, entry.id());
         try {
-            RespawnCagePlacer.tryPlace(serverLevel, entity, entry, entityId.toString());
+            boolean placed = RespawnCagePlacer.tryPlace(serverLevel, entity, entry, entityId.toString());
+            DebugLog.info("Placement attempt finished: placed={} entityId={} rule={}", placed, entityId, entry.id());
         } catch (Exception e) {
             UniversalBossRespawner.LOGGER.warn("Failed to place {} respawn cage", entityId, e);
+            DebugLog.info("Exception while placing respawn cage for entityId={}: {}", entityId, e.toString());
         }
     }
 

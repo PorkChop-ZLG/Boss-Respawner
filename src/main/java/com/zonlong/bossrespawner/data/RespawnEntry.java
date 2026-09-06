@@ -229,7 +229,8 @@ public record RespawnEntry(
 
     public record DuplicateRule(String mode, int searchRadius) {
         static DuplicateRule fromJson(JsonObject obj) {
-            String mode = getString(obj, "mode", "keep_existing");
+            // Default matches Cataclysm: no duplicate check, allow multiple respawn cages.
+            String mode = getString(obj, "mode", "allow_multiple");
             int searchRadius = Math.max(0, getInt(obj, "search_radius", 16));
             return new DuplicateRule(mode, searchRadius);
         }

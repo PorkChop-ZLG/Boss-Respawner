@@ -3,7 +3,10 @@
 **审查日期：** 2026-09-05  
 **审查类型：** 只读代码审查（未修改任何文件）  
 **审查对象：** `D:\Minecraft\Boss-Respawner`  
-**参考对比：** `D:\Minecraft\Cataclysm` 灾变 Boss 重生笼相关源码
+**参考对比：** `D:\Minecraft\Cataclysm` 灾变 Boss 重生笼相关源码  
+**修复状态更新：** 2026-09-05（代码修复后复核）  
+
+> 状态标记含义：`✅ 已修复`、`⚠️ 部分修复/已处理但不完整`、`❌ 未修复/暂缓`、`N/A 不适用（设计已移除）`。
 
 ---
 
@@ -23,18 +26,20 @@
 
 ## 二、严重性分级
 
-| 等级 | 含义 | 数量 |
-|---|---|---|
-| P0 | 阻断级，启动崩溃/必定破坏存档或主线程 | 未发现明确 P0 |
-| P1 | 严重，可能造成服务器卡顿、强制加载区块、功能核心失效或启动风险 | 3 |
-| P2 | 中等，字段/功能未生效、潜在重复生成、异常处理不足 | 9 |
-| P3 | 建议，代码质量、冗余、日志、边界完善 | 若干 |
+| 等级 | 含义 | 原审查数量 | 修复后状态 |
+|---|---|---|---|
+| P0 | 阻断级，启动崩溃/必定破坏存档或主线程 | 未发现明确 P0 | 仍无 P0 |
+| P1 | 严重，可能造成服务器卡顿、强制加载区块、功能核心失效或启动风险 | 3 | 0 未修复（3 项已修复） |
+| P2 | 中等，字段/功能未生效、潜在重复生成、异常处理不足 | 9 | 0 项未修复，1 项部分（P2-6） |
+| P3 | 建议，代码质量、冗余、日志、边界完善 | 若干 | 2 项未修复（P3-2、P3-7），其余已处理/不适用 |
 
 ---
 
 ## 三、P1 严重问题
 
 ### P1-1 重复笼检查按 3D 立方体全扫描，且未先检查区块是否加载
+
+**修复状态：✅ 已修复**
 
 **文件与位置**
 
@@ -71,6 +76,8 @@ for (BlockPos pos : BlockPos.betweenClosed(center.offset(-r, -r, -r), center.off
 
 ### P1-2 每区块数量限制按整根 16×16×世界高度逐方块扫描
 
+**修复状态：✅ 已修复（按 v2 设计删除每区块数量限制）**
+
 **文件与位置**
 
 - `placement/RespawnCagePlacer.java`
@@ -106,6 +113,8 @@ for (int x = chunkX << 4; x < (chunkX << 4) + 16; x++) {
 
 ### P1-3 主类与客户端类同时使用同一 `modId` 标注 `@Mod`，存在启动期风险
 
+**修复状态：✅ 已修复**
+
 **文件与位置**
 
 - `UniversalBossRespawner.java` 第 20 行
@@ -133,6 +142,8 @@ for (int x = chunkX << 4; x < (chunkX << 4) + 16; x++) {
 
 ### P2-1 `activation.consume` 已定义但未生效
 
+**修复状态：✅ 已修复**
+
 **文件与位置**
 
 - `data/RespawnEntry.java`：第 173-179 行
@@ -158,6 +169,8 @@ for (int x = chunkX << 4; x < (chunkX << 4) + 16; x++) {
 
 ### P2-2 `visual.*` 整组未接入
 
+**修复状态：✅ 已按 v2 处理（删除 `visual.*` 数据驱动，渲染器始终显示预览实体与钥匙物品）**
+
 **文件与位置**
 
 - `data/RespawnEntry.java`：第 228-235 行 `VisualRule`
@@ -179,6 +192,8 @@ for (int x = chunkX << 4; x < (chunkX << 4) + 16; x++) {
 ---
 
 ### P2-3 客户端渲染每帧做实体/物品注册表解析
+
+**修复状态：✅ 已修复（BE 缓存 `EntityType` / `Item`，解析失败安全返回）**
 
 **文件与位置**
 
@@ -204,6 +219,8 @@ for (int x = chunkX << 4; x < (chunkX << 4) + 16; x++) {
 
 ### P2-4 `spawn.count > 1` 时可能部分生成后返回失败，重试造成重复实体
 
+**修复状态：✅ 已修复（先创建全部实体，全部成功后再统一添加；失败时全部丢弃）**
+
 **文件与位置**
 
 - `blockentity/BossRespawnerBlockEntity.java`
@@ -222,6 +239,8 @@ for (int x = chunkX << 4; x < (chunkX << 4) + 16; x++) {
 ---
 
 ### P2-5 数据加载未校验 `activation.item`
+
+**修复状态：✅ 已修复（reload 阶段校验并跳过未注册物品）**
 
 **文件与位置**
 
@@ -242,6 +261,8 @@ for (int x = chunkX << 4; x < (chunkX << 4) + 16; x++) {
 ---
 
 ### P2-6 方块实体 NBT 反序列化缺少防御性校验
+
+**修复状态：⚠️ 基本修复（`SpawnOffset` 长度、Registry ID、主要数值已防护；`maxAttempts` 负值未显式钳制）**
 
 **文件与位置**
 
@@ -267,6 +288,8 @@ for (int x = chunkX << 4; x < (chunkX << 4) + 16; x++) {
 
 ### P2-7 `maxAttempts` 达到上限后留下永久卡死的点亮方块
 
+**修复状态：✅ 已修复（达到上限后恢复未点亮、重置计数，并发送聊天 + 日志警告）**
+
 **文件与位置**
 
 - `blockentity/BossRespawnerBlockEntity.java`
@@ -284,6 +307,8 @@ for (int x = chunkX << 4; x < (chunkX << 4) + 16; x++) {
 ---
 
 ### P2-8 放置后写入 BE 数据未显式向客户端同步
+
+**修复状态：✅ 已修复（放置后调用 `sendBlockUpdated`）**
 
 **文件与位置**
 
@@ -305,6 +330,8 @@ for (int x = chunkX << 4; x < (chunkX << 4) + 16; x++) {
 ---
 
 ### P2-9 `HomePosLocator` 反射兼容存在边界风险
+
+**修复状态：✅ 已解决/不适用（按 v2 删除 `HomePosLocator`，只支持死亡地点放置）**
 
 **文件与位置**
 
@@ -328,35 +355,49 @@ for (int x = chunkX << 4; x < (chunkX << 4) + 16; x++) {
 
 ### P3-1 `schema_version` 被忽略
 
+**修复状态：✅ 已修复**
+
 - `data/RespawnEntry.java` 未读取 `schema_version`。
 - 建议未来用于不兼容升级提示。
 
 ### P3-2 多条目同优先级冲突时没有警告
+
+**修复状态：❌ 未修复/暂缓**
 
 - `data/RespawnRuleReloadListener.java` 第 63-69 行静默选择字典序更小条目。
 - 建议同优先级冲突时输出警告。
 
 ### P3-3 未知 `placement.mode` 静默回退
 
+**修复状态：✅ 不适用（v2 已删除 `placement.mode`）**
+
 - `placement/PlacementResolver.java` 第 73-82 行。
 - 建议数据加载时校验 mode 枚举。
 
 ### P3-4 `VisualRule.entityScale` 目前只支持字符串 `auto`
+
+**修复状态：✅ 不适用（v2 已删除 `VisualRule` / `entityScale`）**
 
 - `data/RespawnEntry.java` 第 232 行使用 `getString`。
 - 设计文档说支持 string/double，但当前没有数值解析。
 
 ### P3-5 `LOG_PLACEMENT` 与注释不一致
 
+**修复状态：✅ 已修复（统一为 `DEBUG_INFO` 调试开关，覆盖放置、跳过、生成等全链路日志）**
+
 - `Config.java` 注释说“placed, skipped, spawned”。
 - `RespawnCagePlacer.java` 只记录放置成功，跳过只打 debug，生成成功无日志。
 
 ### P3-6 未点亮方块实体也每 tick 执行
 
+**修复状态：✅ 已处理（未点亮时直接 return，不执行生成逻辑；ticker 仍保留）**
+
 - `blockentity/BossRespawnerBlockEntity.java` 第 66-75 行。
 - 可考虑只在 `LIT` 状态或客户端需要动画时才 tick。
 
 ### P3-7 手动放置的方块没有数据，无法使用
+
+**修复状态：❌ 未修复/暂缓**
 
 - `ModItems.java` 的 BlockItem 允许手动放置。
 - 手动放置的 BE 默认无实体类型/钥匙物品，无法激活。
@@ -364,20 +405,28 @@ for (int x = chunkX << 4; x < (chunkX << 4) + 16; x++) {
 
 ### P3-8 无效 `spawn.nbt` 延迟到放置时才解析
 
+**修复状态：✅ 已修复（reload 时预解析，非法 NBT 跳过并警告）**
+
 - `placement/RespawnCagePlacer.java` 第 120-129 行。
 - 建议 reload 时预解析。
 
 ### P3-9 渲染线程缺少对非法/缺失注册对象的兜底
+
+**修复状态：✅ 已修复（BE 安全解析并缓存，渲染器对 null 直接返回）**
 
 - `client/render/BossRespawnerBlockEntityRenderer.java` 直接解析 ResourceLocation。
 - 建议与 P2-3/P2-6 一起处理。
 
 ### P3-10 未调用 `level.gameEvent`
 
+**修复状态：✅ 已修复**
+
 - `BossRespawnerBlock.java` 右键激活时没有触发 `GameEvent.BLOCK_CHANGE`。
 - 可能影响 sculk 等监听方块。
 
 ### P3-11 客户端启动日志为调试残留
+
+**修复状态：✅ 已修复（已删除调试日志）**
 
 - `UniversalBossRespawnerClient.java` 仍有 `HELLO FROM CLIENT SETUP` 和用户名输出。
 - 建议删除或改为 debug。
@@ -386,31 +435,31 @@ for (int x = chunkX << 4; x < (chunkX << 4) + 16; x++) {
 
 ## 六、相比灾变模组的额外功能接入状态
 
-| 额外功能 | 入口/位置 | 是否真正接入 | 说明 |
-|---|---|---|---|
-| JSON 数据包条目 | `RespawnEntry` / `RespawnRuleReloadListener` | ✅ 已接入 | 支持 `/reload`，未知实体跳过 |
-| `entity` 数组 | `RespawnEntry.parseEntities` | ✅ 已接入 | 多条实体共享规则 |
-| `priority` 冲突处理 | `RespawnRuleReloadListener.shouldReplace` | ✅ 已接入 | 同优先级无警告 |
-| `activation.item` / `amount` | `RespawnCagePlacer` → `setSpawnerData` | ✅ 已接入 | item 未在 reload 时校验 |
-| `activation.consume` | `RespawnEntry` 解析 | ❌ 未接入 | 永远消耗非创造物品 |
-| `placement.mode/offset/search/requireGround/avoidFluids` | `PlacementResolver` | ✅ 已接入 | |
-| `placement.avoid_blocks` + `Config.foreignCageBlockIds` | `PlacementResolver` | ✅ 已接入 | 仅检查候选位/下方 |
-| `death.player_kill_only/dimensions/biomes` | `LivingDeathHandler` | ✅ 已接入 | |
-| `spawn.delay_ticks` | `BossRespawnerBlockEntity.tick` | ✅ 已接入 | |
-| `spawn.require_player_nearby/player_range/allow_peaceful` | BE tick/条件 | ✅ 已接入 | |
-| `spawn.count` | BE `trySpawn` | ⚠️ 部分接入 | 部分失败重复风险 |
-| `spawn.spawn_offset` | BE `trySpawn` | ✅ 已接入 | NBT 反序列化缺校验 |
-| `spawn.nbt` | `RespawnCagePlacer.parseNbt` | ✅ 已接入 | 延迟到放置时解析 |
-| `spawn.finalize_spawn` | BE `trySpawn` | ✅ 已接入 | |
-| `spawn.set_home_to_cage` | BE `trySetHome` 反射 | ✅ 已接入 | 仅 Cataclysm `IHomeEntity` |
-| `spawn.max_attempts` | BE tick | ⚠️ 已接入但终态不完整 | 达到上限后留下永久点亮方块 |
-| `spawn.retry_interval_ticks` | BE tick | ✅ 已接入 | |
-| `visual.show_entity/show_item/entity_scale` | `VisualRule` | ❌ 未接入 | BE 未保存，渲染器未读取 |
-| `duplicate.keep_existing/replace_existing/allow_multiple` | `RespawnCagePlacer` | ✅ 已接入 | 3D 大范围扫描需优化 |
-| `Config.MAX_CAGES_PER_CHUNK` | `RespawnCagePlacer.countCagesInChunk` | ✅ 已接入 | 整根 16×16×高度扫描需优化 |
-| Home 通用鸭子类型 | `HomePosLocator` | ✅ 已接入 | 仅同维度 |
-| `schema_version` | `RespawnEntry` | ❌ 未接入 | 无版本校验 |
-| 无硬依赖 Cataclysm | 反射 + optional dependency | ✅ 已接入 | `neoforge.mods.toml` 声明 optional |
+| 额外功能 | 入口/位置 | 是否真正接入 | 本轮修复状态 | 说明 |
+|---|---|---|---|---|
+| JSON 数据包条目 | `RespawnEntry` / `RespawnRuleReloadListener` | ✅ 已接入 | ✅ 已确认 | 支持 `/reload`，未知实体跳过 |
+| `entity` 数组 | `RespawnEntry.parseEntities` | ✅ 已接入 | ✅ 已确认 | 多条实体共享规则 |
+| `priority` 冲突处理 | `RespawnRuleReloadListener.shouldReplace` | ✅ 已接入 | ⚠️ 部分 | 同优先级冲突仍无警告（P3-2 未修复） |
+| `activation.item` / `amount` | `RespawnCagePlacer` → `setSpawnerData` | ✅ 已接入 | ✅ 已修复 | reload 现在校验 item 是否注册 |
+| `activation.consume` | `RespawnEntry` / BE / `BossRespawnerBlock` | ❌ 未接入 | ✅ 已修复 | 已保存到 NBT，右键按 `shouldConsume()` 决定是否消耗 |
+| `placement.offset/search/requireGround/avoidFluids` | `PlacementResolver` | ✅ 已接入 | ✅ 已简化 | v2 删除 `mode`/HomePos，仅死点附近放置 |
+| `placement.avoid_blocks` + `Config.foreignCageBlockIds` | `PlacementResolver` | ✅ 已接入 | ✅ 已确认 | 仅检查候选位/下方 |
+| `death.player_kill_only/dimensions/biomes` | `LivingDeathHandler` | ✅ 已接入 | ✅ 已确认 | 已增加调试日志 |
+| `spawn.delay_ticks` | `BossRespawnerBlockEntity.tick` | ✅ 已接入 | ✅ 已确认 | |
+| `spawn.require_player_nearby/player_range/allow_peaceful` | BE tick/条件 | ✅ 已接入 | ✅ 已确认 | |
+| `spawn.count` | BE `trySpawn` | ⚠️ 部分接入 | ✅ 已修复 | 先创建全部实体再统一添加，失败全部丢弃 |
+| `spawn.spawn_offset` | BE `trySpawn` | ✅ 已接入 | ✅ 已加固 | NBT 反序列化有 `normalizeOffset` 长度校验 |
+| `spawn.nbt` | `RespawnCagePlacer.parseNbt` | ✅ 已接入 | ✅ 已修复 | reload 预解析，非法 NBT 跳过 |
+| `spawn.finalize_spawn` | BE `trySpawn` | ✅ 已接入 | ✅ 已确认 | |
+| `spawn.set_home_to_cage` | BE `trySetHome` 反射 | ✅ 已接入 | ✅ 已移除 | 按 v2 删除 HomePos/`set_home_to_cage`，不再反射 |
+| `spawn.max_attempts` | BE tick | ⚠️ 已接入但终态不完整 | ✅ 已修复 | 失败后恢复未点亮、重置，并发送聊天+日志警告 |
+| `spawn.retry_interval_ticks` | BE tick | ✅ 已接入 | ✅ 已确认 | |
+| `visual.show_entity/show_item/entity_scale` | `VisualRule` | ❌ 未接入 | ✅ 已移除 | v2 删除 visual 数据驱动，始终渲染预览与钥匙物品 |
+| `duplicate.keep_existing/replace_existing/allow_multiple` | `RespawnCagePlacer` | ✅ 已接入 | ✅ 已优化 | 改为遍历已加载区块的 BlockEntity，不再全立方体扫描 |
+| `Config.MAX_CAGES_PER_CHUNK` | `RespawnCagePlacer.countCagesInChunk` | ✅ 已接入 | ✅ 已移除 | 删除每区块重生笼数量限制 |
+| Home 通用鸭子类型 | `HomePosLocator` | ✅ 已接入 | ✅ 已移除 | 不再使用反射/HomePos |
+| `schema_version` | `RespawnEntry` | ❌ 未接入 | ✅ 已修复 | 校验仅接受 version 1，其他版本跳过并警告 |
+| 无硬依赖 Cataclysm | 反射 + optional dependency | ✅ 已接入 | ✅ 已确认 | `neoforge.mods.toml` 仅声明 optional |
 
 ---
 
@@ -420,36 +469,44 @@ for (int x = chunkX << 4; x < (chunkX << 4) + 16; x++) {
 
 死亡事件 → 规则查找 → 位置解析 → 放置笼 → 方块实体保存 → 右键激活 → 延迟生成 → 销毁笼。
 
-当前主要问题集中在：
+经本轮代码审查修复后：
 
-1. 服务端搜索路径性能与区块加载风险（P1）。
-2. 若干“已定义未接入”字段（P2）：`activation.consume`、`visual.*`。
-3. 边界处理不足（P2）：NBT 损坏、非法 ID、`count > 1`、`maxAttempts` 终态。
-4. 启动期双 `@Mod` 风险（P1，已实测通过但建议整理）。
+1. P1 三项已全部解决：重复笼/每区块查询不再全方块扫描，已加载区块 BlockEntity 遍历；双 `@Mod` 入口已收敛为单一主入口。
+2. P2 中 `activation.consume` 已接入；`visual.*` 按 v2 设计删除；`trySpawn` 原子性、NBT 防御、`maxAttempts` 终态、客户端同步均已修复。
+3. P3 中 `schema_version`、reload 预解析 NBT、渲染兜底、`GameEvent`、客户端日志等已处理；剩余 P3-2 同优先级冲突警告与 P3-7 手动放置说明/功能暂缓。
+4. 当前已知独立问题：重进世界后，由笼子生成的 Boss 死亡不再放置新笼（用户报告），需按 bug 修复计划继续诊断，不属于本次代码审查修复项。
 
 ---
 
-## 八、优先修复清单
+## 八、优先修复清单（含状态）
 
-1. **重构 `RespawnCagePlacer` 的重复笼/每区块限制查询**
-   - 加 `isLoaded` 保护
-   - 改用 chunk BlockEntity 列表或服务端缓存
-   - 限制扫描范围/维度
+1. ✅ **重构 `RespawnCagePlacer` 的重复笼/每区块限制查询**
+   - 已改为已加载区块 BlockEntity 列表遍历
+   - 已限制扫描范围/维度
+   - 每区块数量限制按 v2 设计删除
 
-2. **验证双 `@Mod` 入口**
-   - 已实际运行通过，但仍建议收敛为单一主入口。
+2. ✅ **验证并收敛双 `@Mod` 入口**
+   - 已收敛为单一 `@Mod` 主入口，客户端逻辑走普通辅助类/`@EventBusSubscriber`
 
-3. **补齐已声明字段**
-   - `activation.consume`
-   - `visual.show_entity/show_item/entity_scale`
+3. ✅ **补齐已声明字段**
+   - `activation.consume` 已接入
+   - `visual.*` 按 v2 设计删除（不再需要接入）
 
-4. **修复 `trySpawn` 的 `count > 1` 原子性**
+4. ✅ **修复 `trySpawn` 的 `count > 1` 原子性**
 
-5. **加固 NBT 与 ID 解析**
-   - 校验 `SpawnOffset` 长度
-   - 缓存/安全解析 `ResourceLocation`
+5. ✅（基本）**加固 NBT 与 ID 解析**
+   - `SpawnOffset` 长度校验
+   - Registry ID / ResourceLocation 安全解析与缓存
    - reload 时校验 `activation.item`
+   - 遗留：`maxAttempts` 负值未显式钳制（P2-6）
 
-6. **完善 `maxAttempts` 失败终态**
+6. ✅ **完善 `maxAttempts` 失败终态**
 
-7. **优化客户端每帧注册表查找**
+7. ✅ **优化客户端每帧注册表查找**
+
+8. ⏳ **暂缓/未处理**
+   - P3-2：同优先级冲突警告
+   - P3-7：手动放置方块无数据（文档说明或提供设置功能）
+
+9. 🐞 **待处理（非本次审查项）**
+   - 跨存档（重进世界）后笼子生成的 Boss 死亡不再放新笼，按 `docs/plans/2026-09-05-bug-fix-plan.md` 继续诊断。

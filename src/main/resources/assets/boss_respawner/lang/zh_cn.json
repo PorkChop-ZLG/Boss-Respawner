@@ -15,8 +15,8 @@
 
   "boss_respawner.configuration.general.enableMod": "启用模组",
   "boss_respawner.configuration.general.enableMod.tooltip": "Boss重生笼功能总开关。关闭后不会生成或召唤任何重生笼。",
-  "boss_respawner.configuration.general.logPlacement": "记录放置日志",
-  "boss_respawner.configuration.general.logPlacement.tooltip": "记录重生笼的放置、跳过和生成事件。",
+  "boss_respawner.configuration.general.debugInfo": "调试信息",
+  "boss_respawner.configuration.general.debugInfo.tooltip": "在日志中打印Boss重生笼的调试信息。",
   "boss_respawner.configuration.compat.foreignCageBlockIds": "其它模组重生笼方块ID",
   "boss_respawner.configuration.compat.foreignCageBlockIds.tooltip": "将这些方块视为其它模组的重生笼/祭坛，放置本模组重生笼时会避开它们。",
 

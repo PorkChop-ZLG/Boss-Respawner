@@ -3,6 +3,7 @@ package com.zonlong.bossrespawner.data;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.zonlong.bossrespawner.DebugLog;
 import com.zonlong.bossrespawner.UniversalBossRespawner;
 
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -32,6 +33,8 @@ public class RespawnRuleReloadListener extends SimpleJsonResourceReloadListener 
                          ProfilerFiller profilerFiller) {
         Map<ResourceLocation, RespawnEntry> byId = new HashMap<>();
         Map<ResourceLocation, RespawnEntry> byEntity = new HashMap<>();
+
+        DebugLog.info("Respawn rule reload started: found {} candidate JSON files", objects.size());
 
         for (Map.Entry<ResourceLocation, JsonElement> entry : objects.entrySet()) {
             ResourceLocation id = entry.getKey();
@@ -93,6 +96,7 @@ public class RespawnRuleReloadListener extends SimpleJsonResourceReloadListener 
         manager.replaceAll(byEntity, byId);
         UniversalBossRespawner.LOGGER.info("Loaded {} boss respawn entries ({} effective entity mappings)",
                 byId.size(), byEntity.size());
+        DebugLog.info("Respawn rule reload finished: {} entries, {} entity mappings", byId.size(), byEntity.size());
     }
 
     private boolean shouldReplace(RespawnEntry previous, RespawnEntry candidate) {
