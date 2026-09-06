@@ -1,0 +1,12 @@
+{
+  "block.boss_respawner.boss_respawner": "通用Boss重生笼",
+  "item.boss_respawner.boss_respawner": "通用Boss重生笼",
+
+  "boss_respawner.configuration.title": "通用Boss重生笼配置",
+  "boss_respawner.configuration.section.boss_respawner.common.toml": "通用Boss重生笼配置",
+  "boss_respawner.configuration.section.boss_respawner.common.toml.title": "通用Boss重生笼配置",
+  "boss_respawner.configuration.general.enableMod": "启用模组",
+  "boss_respawner.configuration.general.logPlacement": "记录放置日志",
+  "boss_respawner.configuration.compat.foreignCageBlockIds": "其它模组重生笼方块 ID",
+  "boss_respawner.configuration.limits.maxCagesPerChunk": "每区块最大重生笼数量"
+}

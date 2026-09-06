@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "boss_respawner:block/boss_respawner"
+    }
+  }
+}

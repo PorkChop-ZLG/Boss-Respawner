@@ -1,13 +1,12 @@
 {
-  "itemGroup.boss_respawner": "Example Mod Tab",
-  "block.boss_respawner.example_block": "Example Block",
-  "item.boss_respawner.example_item": "Example Item",
+  "block.boss_respawner.boss_respawner": "Universal Boss Respawner",
+  "item.boss_respawner.boss_respawner": "Universal Boss Respawner",
 
   "boss_respawner.configuration.title": "Universal Boss Respawner Configs",
   "boss_respawner.configuration.section.boss_respawner.common.toml": "Universal Boss Respawner Configs",
   "boss_respawner.configuration.section.boss_respawner.common.toml.title": "Universal Boss Respawner Configs",
-  "boss_respawner.configuration.items": "Item List",
-  "boss_respawner.configuration.logDirtBlock": "Log Dirt Block",
-  "boss_respawner.configuration.magicNumberIntroduction": "Magic Number Text",
-  "boss_respawner.configuration.magicNumber": "Magic Number"
+  "boss_respawner.configuration.general.enableMod": "Enable Mod",
+  "boss_respawner.configuration.general.logPlacement": "Log Placements",
+  "boss_respawner.configuration.compat.foreignCageBlockIds": "Foreign Cage Block IDs",
+  "boss_respawner.configuration.limits.maxCagesPerChunk": "Max Cages Per Chunk"
 }
