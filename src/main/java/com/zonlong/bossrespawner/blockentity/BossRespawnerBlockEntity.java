@@ -1,13 +1,13 @@
 package com.zonlong.bossrespawner.blockentity;
 
 import com.zonlong.bossrespawner.UniversalBossRespawner;
+import com.zonlong.bossrespawner.block.BossRespawnerBlock;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.GlobalPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.Connection;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -17,38 +17,46 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
-import com.zonlong.bossrespawner.block.BossRespawnerBlock;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class BossRespawnerBlockEntity extends BlockEntity {
     private static final String TAG_ENTITY_TYPE = "EntityType";
     private static final String TAG_KEY_ITEM_ID = "KeyItemId";
     private static final String TAG_KEY_AMOUNT = "KeyAmount";
+    private static final String TAG_CONSUME_KEY_ITEM = "ConsumeKeyItem";
     private static final String TAG_SPAWN_RULE = "SpawnRule";
     private static final String TAG_LIT_TICKS = "LitTicks";
     private static final String TAG_ATTEMPTS = "Attempts";
     private static final String TAG_SPAWNED = "Spawned";
-    private static final String TAG_STOPPED = "Stopped";
 
     private String entityTypeId = "";
     private String keyItemId = "";
     private int keyAmount = 1;
+    private boolean consumeKeyItem = true;
     private CompoundTag spawnNbt = new CompoundTag();
-    private int delayTicks = 60;
+    private int delayTicks = 20;
     private boolean requirePlayerNearby = true;
-    private double playerRange = 16.0D;
+    private double playerRange = 9.0D;
     private boolean allowPeaceful = false;
     private int count = 1;
-    private int[] spawnOffset = new int[]{0, 1, 0};
+    private int[] spawnOffset = new int[]{0, 0, 0};
     private boolean finalizeSpawn = true;
-    private boolean setHomeToCage = false;
-    private int maxAttempts = -1;
-    private int retryIntervalTicks = 20;
+    private int maxAttempts = 20;
+    private int retryIntervalTicks = 4;
+
+    private ResourceLocation entityLocation;
+    private EntityType<?> cachedEntityType;
+    private ResourceLocation itemLocation;
+    private Item cachedItem;
 
     public int tickCount;
     public final AnimationState openingAnimationState = new AnimationState();
@@ -57,24 +65,19 @@ public class BossRespawnerBlockEntity extends BlockEntity {
     private int litTicks = 0;
     private int attempts = 0;
     private boolean spawned = false;
-    private boolean stopped = false;
 
     public BossRespawnerBlockEntity(BlockPos pos, BlockState state) {
         super(com.zonlong.bossrespawner.init.ModBlockEntities.BOSS_RESPAWNER.get(), pos, state);
     }
 
     public static void tick(Level level, BlockPos pos, BlockState state, BossRespawnerBlockEntity be) {
-        be.tickCount++;
-        if (be.spawned || be.stopped) {
-            return;
-        }
-
+        // Only tick while lit. Unlit cages do no gameplay work.
         if (!state.getValue(BossRespawnerBlock.LIT)) {
-            be.litTicks = 0;
             return;
         }
 
-        if (level.isClientSide) {
+        be.tickCount++;
+        if (be.spawned || level.isClientSide) {
             return;
         }
 
@@ -95,20 +98,18 @@ public class BossRespawnerBlockEntity extends BlockEntity {
             level.destroyBlock(pos, false);
         } else {
             be.attempts++;
-            if (be.maxAttempts >= 0 && be.attempts >= be.maxAttempts) {
-                be.stopped = true;
+            if (be.maxAttempts > 0 && be.attempts >= be.maxAttempts) {
+                be.resetAfterMaxAttempts((ServerLevel) level);
+            } else {
+                // Reuse litTicks as a countdown for the next retry.
+                be.litTicks = Math.max(0, be.delayTicks - be.retryIntervalTicks);
+                be.setChanged();
             }
-            // Reuse litTicks as a countdown so the next attempt happens after retryIntervalTicks.
-            be.litTicks = Math.max(0, be.delayTicks - be.retryIntervalTicks);
-            be.setChanged();
         }
     }
 
     public boolean matchesKeyItem(ItemStack stack) {
-        if (keyItemId.isEmpty()) {
-            return false;
-        }
-        Item item = BuiltInRegistries.ITEM.get(ResourceLocation.parse(keyItemId));
+        Item item = getCachedKeyItem();
         return item != null && stack.is(item) && stack.getCount() >= keyAmount;
     }
 
@@ -116,10 +117,15 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         return keyAmount;
     }
 
+    public boolean shouldConsume() {
+        return consumeKeyItem;
+    }
+
     public void activate(Level level) {
         if (level.getBlockState(worldPosition).hasProperty(BossRespawnerBlock.LIT)) {
             level.setBlock(worldPosition, level.getBlockState(worldPosition).setValue(BossRespawnerBlock.LIT, true), 2);
             litTicks = 0;
+            attempts = 0;
             setChanged();
             level.blockEvent(worldPosition, level.getBlockState(worldPosition).getBlock(), 1, 0);
         }
@@ -134,11 +140,7 @@ public class BossRespawnerBlockEntity extends BlockEntity {
     }
 
     private boolean trySpawn(ServerLevel serverLevel, BlockPos pos) {
-        if (entityTypeId.isEmpty()) {
-            return false;
-        }
-
-        EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.get(ResourceLocation.parse(entityTypeId));
+        EntityType<?> type = getCachedEntityType();
         if (type == null) {
             UniversalBossRespawner.LOGGER.warn("Cannot find entity type {} for respawner at {}", entityTypeId, pos);
             return false;
@@ -148,10 +150,13 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                 pos.offset(spawnOffset[0], spawnOffset[1], spawnOffset[2]),
                 0.5D, 0.0D, 0.5D);
 
-        for (int i = 0; i < count; i++) {
-            try {
+        // Create all entities first so a late creation failure doesn't leave partial spawns.
+        List<Entity> created = new ArrayList<>();
+        try {
+            for (int i = 0; i < count; i++) {
                 Entity entity = type.create(serverLevel);
                 if (entity == null) {
+                    discardAll(created);
                     return false;
                 }
                 entity.setPos(spawnPos);
@@ -161,55 +166,74 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                 if (entity instanceof Mob mob && finalizeSpawn) {
                     mob.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(pos), MobSpawnType.SPAWNER, null);
                 }
-                if (setHomeToCage) {
-                    trySetHome(entity, serverLevel, pos);
-                }
+                created.add(entity);
+            }
+
+            for (Entity entity : created) {
                 if (!serverLevel.addFreshEntity(entity)) {
+                    discardAll(created);
                     return false;
                 }
-            } catch (Exception e) {
-                UniversalBossRespawner.LOGGER.warn("Failed to spawn {} from respawner at {}", entityTypeId, pos, e);
-                return false;
             }
-        }
-        return true;
-    }
-
-    private static void trySetHome(Entity entity, ServerLevel serverLevel, BlockPos pos) {
-        try {
-            Class<?> clazz = Class.forName("com.github.L_Ender.cataclysm.entity.etc.IHomeEntity");
-            if (clazz.isInstance(entity)) {
-                clazz.getMethod("setHomePos", GlobalPos.class)
-                        .invoke(entity, GlobalPos.of(serverLevel.dimension(), pos));
-            }
-        } catch (ReflectiveOperationException | RuntimeException e) {
-            // Optional Cataclysm integration; ignore when absent.
+            return true;
+        } catch (Exception e) {
+            discardAll(created);
+            UniversalBossRespawner.LOGGER.warn("Failed to spawn {} from respawner at {}", entityTypeId, pos, e);
+            return false;
         }
     }
 
-    public void setSpawnerData(String entityTypeId, String keyItemId, int keyAmount,
+    private static void discardAll(List<Entity> entities) {
+        for (Entity entity : entities) {
+            if (entity != null) {
+                entity.discard();
+            }
+        }
+    }
+
+    private void resetAfterMaxAttempts(ServerLevel level) {
+        attempts = 0;
+        litTicks = 0;
+
+        BlockState state = level.getBlockState(worldPosition);
+        if (state.hasProperty(BossRespawnerBlock.LIT)) {
+            level.setBlock(worldPosition, state.setValue(BossRespawnerBlock.LIT, false), 2);
+        }
+
+        Component message = Component.translatable("boss_respawner.message.respawn_failed", entityTypeId);
+        for (Player player : level.players()) {
+            if (player.distanceToSqr(Vec3.atCenterOf(worldPosition)) <= 256.0D) {
+                player.displayClientMessage(message, false);
+            }
+        }
+        UniversalBossRespawner.LOGGER.warn("Respawner at {} failed {} times and reset for entity {}",
+                worldPosition, maxAttempts, entityTypeId);
+        setChanged();
+    }
+
+    public void setSpawnerData(String entityTypeId, String keyItemId, int keyAmount, boolean consumeKeyItem,
                                CompoundTag spawnNbt, int delayTicks, boolean requirePlayerNearby,
                                double playerRange, boolean allowPeaceful, int count, int[] spawnOffset,
-                               boolean finalizeSpawn, boolean setHomeToCage, int maxAttempts,
-                               int retryIntervalTicks) {
-        this.entityTypeId = entityTypeId;
-        this.keyItemId = keyItemId;
-        this.keyAmount = keyAmount;
+                               boolean finalizeSpawn, int maxAttempts, int retryIntervalTicks) {
+        this.entityTypeId = entityTypeId == null ? "" : entityTypeId;
+        this.keyItemId = keyItemId == null ? "" : keyItemId;
+        this.keyAmount = Math.max(1, keyAmount);
+        this.consumeKeyItem = consumeKeyItem;
         this.spawnNbt = spawnNbt == null ? new CompoundTag() : spawnNbt.copy();
-        this.delayTicks = delayTicks;
+        this.delayTicks = Math.max(0, delayTicks);
         this.requirePlayerNearby = requirePlayerNearby;
-        this.playerRange = playerRange;
+        this.playerRange = Math.max(1.0D, playerRange);
         this.allowPeaceful = allowPeaceful;
-        this.count = count;
-        this.spawnOffset = spawnOffset == null ? new int[]{0, 1, 0} : spawnOffset.clone();
+        this.count = Math.max(1, count);
+        this.spawnOffset = normalizeOffset(spawnOffset);
         this.finalizeSpawn = finalizeSpawn;
-        this.setHomeToCage = setHomeToCage;
-        this.maxAttempts = maxAttempts;
-        this.retryIntervalTicks = retryIntervalTicks;
+        this.maxAttempts = normalizeMaxAttempts(maxAttempts);
+        this.retryIntervalTicks = Math.max(1, retryIntervalTicks);
         this.litTicks = 0;
         this.attempts = 0;
         this.spawned = false;
-        this.stopped = false;
+        this.displayEntity = null;
+        invalidateCaches();
         setChanged();
     }
 
@@ -219,6 +243,26 @@ public class BossRespawnerBlockEntity extends BlockEntity {
 
     public String getKeyItemId() {
         return keyItemId;
+    }
+
+    public EntityType<?> getCachedEntityType() {
+        if (cachedEntityType == null && !entityTypeId.isEmpty()) {
+            entityLocation = parseLocation(entityTypeId);
+            if (entityLocation != null) {
+                cachedEntityType = BuiltInRegistries.ENTITY_TYPE.get(entityLocation);
+            }
+        }
+        return cachedEntityType;
+    }
+
+    public Item getCachedKeyItem() {
+        if (cachedItem == null && !keyItemId.isEmpty()) {
+            itemLocation = parseLocation(keyItemId);
+            if (itemLocation != null) {
+                cachedItem = BuiltInRegistries.ITEM.get(itemLocation);
+            }
+        }
+        return cachedItem;
     }
 
     public CompoundTag getSpawnNbt() {
@@ -233,10 +277,6 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         return retryIntervalTicks;
     }
 
-    public boolean isSetHomeToCage() {
-        return setHomeToCage;
-    }
-
     public int getLitTicks() {
         return litTicks;
     }
@@ -249,10 +289,7 @@ public class BossRespawnerBlockEntity extends BlockEntity {
     }
 
     public Entity getDisplayEntity(Level level) {
-        if (entityTypeId.isEmpty()) {
-            return null;
-        }
-        EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.get(ResourceLocation.parse(entityTypeId));
+        EntityType<?> type = getCachedEntityType();
         if (type == null) {
             return null;
         }
@@ -271,21 +308,21 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         if (this.keyAmount <= 0) {
             this.keyAmount = 1;
         }
+        this.consumeKeyItem = !tag.contains(TAG_CONSUME_KEY_ITEM) || tag.getBoolean(TAG_CONSUME_KEY_ITEM);
 
         if (tag.contains(TAG_SPAWN_RULE, net.minecraft.nbt.Tag.TAG_COMPOUND)) {
             CompoundTag rule = tag.getCompound(TAG_SPAWN_RULE);
-            this.delayTicks = rule.getInt("DelayTicks");
+            this.delayTicks = Math.max(0, rule.getInt("DelayTicks"));
             this.requirePlayerNearby = rule.getBoolean("RequirePlayerNearby");
-            this.playerRange = rule.getDouble("PlayerRange");
+            this.playerRange = Math.max(1.0D, rule.getDouble("PlayerRange"));
             this.allowPeaceful = rule.getBoolean("AllowPeaceful");
-            this.count = rule.getInt("Count");
+            this.count = Math.max(1, rule.getInt("Count"));
             if (rule.contains("SpawnOffset", net.minecraft.nbt.Tag.TAG_INT_ARRAY)) {
-                this.spawnOffset = rule.getIntArray("SpawnOffset");
+                this.spawnOffset = normalizeOffset(rule.getIntArray("SpawnOffset"));
             }
             this.finalizeSpawn = rule.getBoolean("FinalizeSpawn");
-            this.setHomeToCage = rule.getBoolean("SetHomeToCage");
-            this.maxAttempts = rule.getInt("MaxAttempts");
-            this.retryIntervalTicks = rule.getInt("RetryIntervalTicks");
+            this.maxAttempts = normalizeMaxAttempts(rule.getInt("MaxAttempts"));
+            this.retryIntervalTicks = Math.max(1, rule.getInt("RetryIntervalTicks"));
             if (rule.contains("SpawnNbt", net.minecraft.nbt.Tag.TAG_COMPOUND)) {
                 this.spawnNbt = rule.getCompound("SpawnNbt").copy();
             }
@@ -294,7 +331,7 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         this.litTicks = tag.getInt(TAG_LIT_TICKS);
         this.attempts = tag.getInt(TAG_ATTEMPTS);
         this.spawned = tag.getBoolean(TAG_SPAWNED);
-        this.stopped = tag.getBoolean(TAG_STOPPED);
+        invalidateCaches();
     }
 
     @Override
@@ -306,6 +343,7 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         if (!keyItemId.isEmpty()) {
             tag.putString(TAG_KEY_ITEM_ID, keyItemId);
             tag.putInt(TAG_KEY_AMOUNT, keyAmount);
+            tag.putBoolean(TAG_CONSUME_KEY_ITEM, consumeKeyItem);
         }
 
         CompoundTag rule = new CompoundTag();
@@ -316,7 +354,6 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         rule.putInt("Count", count);
         rule.putIntArray("SpawnOffset", spawnOffset);
         rule.putBoolean("FinalizeSpawn", finalizeSpawn);
-        rule.putBoolean("SetHomeToCage", setHomeToCage);
         rule.putInt("MaxAttempts", maxAttempts);
         rule.putInt("RetryIntervalTicks", retryIntervalTicks);
         if (!spawnNbt.isEmpty()) {
@@ -327,7 +364,6 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         tag.putInt(TAG_LIT_TICKS, litTicks);
         tag.putInt(TAG_ATTEMPTS, attempts);
         tag.putBoolean(TAG_SPAWNED, spawned);
-        tag.putBoolean(TAG_STOPPED, stopped);
     }
 
     @Override
@@ -350,5 +386,41 @@ public class BossRespawnerBlockEntity extends BlockEntity {
             return true;
         }
         return super.triggerEvent(type, data);
+    }
+
+    private void invalidateCaches() {
+        this.entityLocation = null;
+        this.cachedEntityType = null;
+        this.itemLocation = null;
+        this.cachedItem = null;
+    }
+
+    private static ResourceLocation parseLocation(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            if (value.contains(":")) {
+                return ResourceLocation.parse(value);
+            }
+            return ResourceLocation.fromNamespaceAndPath("minecraft", value);
+        } catch (Exception e) {
+            UniversalBossRespawner.LOGGER.warn("Invalid resource location '{}' in respawner NBT", value);
+            return null;
+        }
+    }
+
+    private static int[] normalizeOffset(int[] offset) {
+        if (offset == null || offset.length != 3) {
+            return new int[]{0, 0, 0};
+        }
+        return offset.clone();
+    }
+
+    private static int normalizeMaxAttempts(int value) {
+        if (value == 0) {
+            return 10;
+        }
+        return value;
     }
 }

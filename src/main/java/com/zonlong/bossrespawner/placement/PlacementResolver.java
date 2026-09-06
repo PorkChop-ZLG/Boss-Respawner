@@ -21,12 +21,9 @@ public final class PlacementResolver {
 
     public static Optional<BlockPos> findPlacementPos(ServerLevel level, LivingEntity entity,
                                                       RespawnEntry.PlacementRule placement) {
-        Optional<BlockPos> origin = resolveOrigin(entity, placement.mode());
-        if (origin.isEmpty()) {
-            return Optional.empty();
-        }
-
-        BlockPos base = origin.get().offset(placement.offset()[0], placement.offset()[1], placement.offset()[2]);
+        // Design decision: this mod only places cages at/near the entity's death position.
+        BlockPos base = entity.blockPosition()
+                .offset(placement.offset()[0], placement.offset()[1], placement.offset()[2]);
 
         List<String> avoidBlocks = new ArrayList<>(placement.avoidBlocks());
         for (String foreign : Config.FOREIGN_CAGE_BLOCK_IDS.get()) {
@@ -68,17 +65,6 @@ public final class PlacementResolver {
         }
 
         return Optional.empty();
-    }
-
-    private static Optional<BlockPos> resolveOrigin(LivingEntity entity, String mode) {
-        return switch (mode == null ? "death_or_home" : mode) {
-            case "death" -> Optional.of(entity.blockPosition());
-            case "home" -> HomePosLocator.findHomePos(entity);
-            default -> {
-                Optional<BlockPos> home = HomePosLocator.findHomePos(entity);
-                yield home.isPresent() ? home : Optional.of(entity.blockPosition());
-            }
-        };
     }
 
     private static boolean isLoadedAndValid(ServerLevel level, BlockPos pos,

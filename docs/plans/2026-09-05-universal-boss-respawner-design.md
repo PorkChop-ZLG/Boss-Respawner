@@ -1,10 +1,20 @@
 # 通用 Boss 重生笼（Universal Boss Respawner）设计方案
 
-**版本：** v1.0（设计稿）
+> **重要更新（2026-09-05）：** 本文为 v1 历史设计稿。后续已按代码审查大幅修改，当前有效设计见：
+> `docs/universal-boss-respawner-design-v2.md`
+>
+> v2 确认以下变更：
+> - 不再有 HomePos / 老巢，只在死亡点生成。
+> - 移除 `visual.*`，始终渲染幽灵生物与钥匙物品。
+> - 移除每区块重生笼数量限制。
+> - 移除 `spawn.set_home_to_cage`。
+> - `max_attempts` 默认 20，失败后恢复未点亮并重置、警告。
+
+**版本：** v1.0（历史设计稿）
 **适用环境：** Minecraft 1.21.1 / NeoForge 21.1.219 / Java 21 / ModDevGradle
 **Mod ID：** `boss_respawner`
 **目标目录：** `D:\Minecraft\Boss-Respawner`
-**状态：** 待评审与批准
+**状态：** 已由 v2 替代
 
 ---
 
@@ -178,7 +188,7 @@ D:\Minecraft\Boss-Respawner
 
   // 点亮后生成行为
   "spawn": {
-    "delay_ticks": 60,
+    "delay_ticks": 20,
     "require_player_nearby": true,
     "player_range": 16.0,
     "allow_peaceful": false,
@@ -228,7 +238,7 @@ D:\Minecraft\Boss-Respawner
 | `death.player_kill_only` | bool | false | 只有玩家（含间接击杀）导致死亡才生成 |
 | `death.dimensions` | string[] | `[]` | 空=全部；例如 `["minecraft:overworld"]` |
 | `death.biomes` | string[] | `[]` | 空=全部；可选过滤 |
-| `spawn.delay_ticks` | int | 60 | 点亮后等待 tick 再尝试生成 |
+| `spawn.delay_ticks` | int | 20 | 点亮后等待 tick 再尝试生成 |
 | `spawn.require_player_nearby` | bool | true | 生成时是否需要附近玩家 |
 | `spawn.player_range` | double | 16.0 | 玩家检测范围 |
 | `spawn.allow_peaceful` | bool | false | 和平难度是否允许生成 |

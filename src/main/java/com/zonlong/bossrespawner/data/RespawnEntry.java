@@ -20,7 +20,6 @@ public record RespawnEntry(
         PlacementRule placement,
         DeathRule death,
         SpawnRule spawn,
-        VisualRule visual,
         DuplicateRule duplicate) {
 
     public static Optional<RespawnEntry> fromJson(ResourceLocation id, JsonObject root) {
@@ -29,6 +28,14 @@ public record RespawnEntry(
             if (!enabled) {
                 return Optional.empty();
             }
+
+            int schemaVersion = getInt(root, "schema_version", 1);
+            if (schemaVersion != 1) {
+                UniversalBossRespawner.LOGGER.warn("Respawn entry {} uses unsupported schema_version {} (expected 1), skipping",
+                        id, schemaVersion);
+                return Optional.empty();
+            }
+
             int priority = getInt(root, "priority", 0);
             List<ResourceLocation> entities = parseEntities(root.get("entity"));
             if (entities.isEmpty()) {
@@ -40,7 +47,6 @@ public record RespawnEntry(
             JsonObject placementObj = getObject(root, "placement");
             JsonObject deathObj = getObject(root, "death");
             JsonObject spawnObj = getObject(root, "spawn");
-            JsonObject visualObj = getObject(root, "visual");
             JsonObject duplicateObj = getObject(root, "duplicate");
 
             ActivationRule activation = ActivationRule.fromJson(activationObj);
@@ -52,12 +58,11 @@ public record RespawnEntry(
             PlacementRule placement = PlacementRule.fromJson(placementObj);
             DeathRule death = DeathRule.fromJson(deathObj);
             SpawnRule spawn = SpawnRule.fromJson(spawnObj);
-            VisualRule visual = VisualRule.fromJson(visualObj);
             DuplicateRule duplicate = DuplicateRule.fromJson(duplicateObj);
 
             return Optional.of(new RespawnEntry(
                     id, true, priority, List.copyOf(entities), activation,
-                    placement, death, spawn, visual, duplicate));
+                    placement, death, spawn, duplicate));
         } catch (Exception e) {
             UniversalBossRespawner.LOGGER.warn("Failed to parse respawn entry {}: {}", id, e.toString());
             return Optional.empty();
@@ -178,11 +183,10 @@ public record RespawnEntry(
         }
     }
 
-    public record PlacementRule(String mode, int[] offset, int searchDown, int searchUp,
+    public record PlacementRule(int[] offset, int searchDown, int searchUp,
                                 int horizontalRadius, boolean requireGround, boolean avoidFluids,
                                 List<String> avoidBlocks) {
         static PlacementRule fromJson(JsonObject obj) {
-            String mode = getString(obj, "mode", "death_or_home");
             int[] offset = getIntArray(obj, "offset", new int[]{0, 0, 0});
             int searchDown = Math.max(0, getInt(obj, "search_down", 32));
             int searchUp = Math.max(0, getInt(obj, "search_up", 16));
@@ -190,7 +194,7 @@ public record RespawnEntry(
             boolean requireGround = getBoolean(obj, "require_ground", true);
             boolean avoidFluids = getBoolean(obj, "avoid_fluids", true);
             List<String> avoidBlocks = getStringList(obj, "avoid_blocks");
-            return new PlacementRule(mode, offset, searchDown, searchUp, horizontalRadius,
+            return new PlacementRule(offset, searchDown, searchUp, horizontalRadius,
                     requireGround, avoidFluids, avoidBlocks);
         }
     }
@@ -206,31 +210,20 @@ public record RespawnEntry(
 
     public record SpawnRule(int delayTicks, boolean requirePlayerNearby, double playerRange,
                             boolean allowPeaceful, int count, int[] spawnOffset, String nbt,
-                            boolean finalizeSpawn, boolean setHomeToCage, int maxAttempts,
-                            int retryIntervalTicks) {
+                            boolean finalizeSpawn, int maxAttempts, int retryIntervalTicks) {
         static SpawnRule fromJson(JsonObject obj) {
-            int delayTicks = Math.max(0, getInt(obj, "delay_ticks", 60));
+            int delayTicks = Math.max(0, getInt(obj, "delay_ticks", 20));
             boolean requirePlayerNearby = getBoolean(obj, "require_player_nearby", true);
-            double playerRange = Math.max(1.0D, getDouble(obj, "player_range", 16.0D));
+            double playerRange = Math.max(1.0D, getDouble(obj, "player_range", 9.0D));
             boolean allowPeaceful = getBoolean(obj, "allow_peaceful", false);
             int count = Math.max(1, getInt(obj, "count", 1));
-            int[] spawnOffset = getIntArray(obj, "spawn_offset", new int[]{0, 1, 0});
+            int[] spawnOffset = getIntArray(obj, "spawn_offset", new int[]{0, 0, 0});
             String nbt = getString(obj, "nbt", "");
             boolean finalizeSpawn = getBoolean(obj, "finalize_spawn", true);
-            boolean setHomeToCage = getBoolean(obj, "set_home_to_cage", false);
-            int maxAttempts = getInt(obj, "max_attempts", -1);
-            int retryIntervalTicks = Math.max(1, getInt(obj, "retry_interval_ticks", 20));
+            int maxAttempts = getInt(obj, "max_attempts", 20);
+            int retryIntervalTicks = Math.max(1, getInt(obj, "retry_interval_ticks", 4));
             return new SpawnRule(delayTicks, requirePlayerNearby, playerRange, allowPeaceful,
-                    count, spawnOffset, nbt, finalizeSpawn, setHomeToCage, maxAttempts, retryIntervalTicks);
-        }
-    }
-
-    public record VisualRule(boolean showEntity, boolean showItem, String entityScale) {
-        static VisualRule fromJson(JsonObject obj) {
-            boolean showEntity = getBoolean(obj, "show_entity", true);
-            boolean showItem = getBoolean(obj, "show_item", true);
-            String entityScale = getString(obj, "entity_scale", "auto");
-            return new VisualRule(showEntity, showItem, entityScale);
+                    count, spawnOffset, nbt, finalizeSpawn, maxAttempts, retryIntervalTicks);
         }
     }
 

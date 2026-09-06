@@ -8,11 +8,13 @@ import com.zonlong.bossrespawner.init.ModBlocks;
 import com.zonlong.bossrespawner.init.ModItems;
 
 import net.minecraft.world.item.CreativeModeTabs;
+import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import org.slf4j.Logger;
@@ -32,6 +34,10 @@ public class UniversalBossRespawner {
         NeoForge.EVENT_BUS.addListener(DataPackHandler::onAddReloadListeners);
 
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            UniversalBossRespawnerClient.init(modContainer);
+        }
     }
 
     @SubscribeEvent

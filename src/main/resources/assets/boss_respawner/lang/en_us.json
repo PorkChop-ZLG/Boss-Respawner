@@ -12,9 +12,6 @@
   "boss_respawner.configuration.compat": "Compatibility",
   "boss_respawner.configuration.compat.button": "Edit",
   "boss_respawner.configuration.compat.tooltip": "Compatibility settings with other mods.",
-  "boss_respawner.configuration.limits": "Limits",
-  "boss_respawner.configuration.limits.button": "Edit",
-  "boss_respawner.configuration.limits.tooltip": "Limits on respawn cage placement.",
 
   "boss_respawner.configuration.general.enableMod": "Enable Mod",
   "boss_respawner.configuration.general.enableMod.tooltip": "Master switch for all respawn cage logic. When false, no cages are placed or spawned.",
@@ -22,6 +19,6 @@
   "boss_respawner.configuration.general.logPlacement.tooltip": "Log when respawn cages are placed, skipped, or spawned.",
   "boss_respawner.configuration.compat.foreignCageBlockIds": "Foreign Cage Block IDs",
   "boss_respawner.configuration.compat.foreignCageBlockIds.tooltip": "Block IDs from other mods that should be treated as foreign respawn cages/altars. Placement avoids these blocks.",
-  "boss_respawner.configuration.limits.maxCagesPerChunk": "Max Cages Per Chunk",
-  "boss_respawner.configuration.limits.maxCagesPerChunk.tooltip": "Maximum respawn cages allowed per loaded chunk. -1 means unlimited."
+
+  "boss_respawner.message.respawn_failed": "The boss respawner at %s failed to summon the boss after several attempts and has reset."
 }

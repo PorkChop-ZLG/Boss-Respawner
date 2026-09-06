@@ -20,6 +20,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
+import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.phys.BlockHitResult;
 
 import javax.annotation.Nullable;
@@ -62,10 +63,11 @@ public class BossRespawnerBlock extends BaseEntityBlock {
         }
 
         if (!level.isClientSide) {
-            if (!player.getAbilities().instabuild) {
+            if (!player.getAbilities().instabuild && be.shouldConsume()) {
                 stack.shrink(be.getKeyAmount());
             }
             be.activate(level);
+            level.gameEvent(GameEvent.BLOCK_CHANGE, pos, GameEvent.Context.of(player, level.getBlockState(pos)));
         }
         return ItemInteractionResult.sidedSuccess(level.isClientSide);
     }

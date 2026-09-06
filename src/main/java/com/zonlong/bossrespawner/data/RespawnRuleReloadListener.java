@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.zonlong.bossrespawner.UniversalBossRespawner;
 
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.TagParser;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener;
@@ -58,6 +59,26 @@ public class RespawnRuleReloadListener extends SimpleJsonResourceReloadListener 
             }
             if (missingEntity) {
                 continue;
+            }
+
+            if (respawnEntry.activation().item() == null
+                    || !BuiltInRegistries.ITEM.containsKey(respawnEntry.activation().item())) {
+                UniversalBossRespawner.LOGGER.warn(
+                        "Skipping respawn entry {} because activation item {} is not registered",
+                        id, respawnEntry.activation().item());
+                continue;
+            }
+
+            String nbt = respawnEntry.spawn().nbt();
+            if (nbt != null && !nbt.isBlank()) {
+                try {
+                    TagParser.parseTag(nbt);
+                } catch (Exception e) {
+                    UniversalBossRespawner.LOGGER.warn(
+                            "Skipping respawn entry {} because spawn NBT is invalid: {}",
+                            id, e.toString());
+                    continue;
+                }
             }
 
             byId.put(respawnEntry.id(), respawnEntry);

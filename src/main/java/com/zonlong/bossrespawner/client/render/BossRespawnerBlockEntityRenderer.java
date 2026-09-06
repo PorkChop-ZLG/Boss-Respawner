@@ -15,7 +15,6 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.client.renderer.entity.ItemRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.AnimationState;
 import net.minecraft.world.entity.Entity;
@@ -87,12 +86,11 @@ public class BossRespawnerBlockEntityRenderer implements BlockEntityRenderer<Bos
 
     private void renderKeyItem(BossRespawnerBlockEntity be, PoseStack poseStack,
                                MultiBufferSource buffer, int packedLight, int packedOverlay) {
-        String keyItemId = be.getKeyItemId();
-        if (keyItemId == null || keyItemId.isEmpty()) {
+        if (be.getKeyItemId() == null || be.getKeyItemId().isEmpty()) {
             return;
         }
 
-        Item item = BuiltInRegistries.ITEM.get(ResourceLocation.parse(keyItemId));
+        Item item = be.getCachedKeyItem();
         if (item == null) {
             return;
         }

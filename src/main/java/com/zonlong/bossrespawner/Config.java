@@ -25,11 +25,6 @@ public final class Config {
             .defineListAllowEmpty("compat.foreignCageBlockIds", List.of("cataclysm:boss_respawner"),
                     () -> "", obj -> obj instanceof String);
 
-    public static final ModConfigSpec.IntValue MAX_CAGES_PER_CHUNK = BUILDER
-            .comment("Maximum respawn cages allowed per loaded chunk. -1 means unlimited.")
-            .translation("boss_respawner.configuration.limits.maxCagesPerChunk")
-            .defineInRange("limits.maxCagesPerChunk", -1, -1, Integer.MAX_VALUE);
-
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private Config() {

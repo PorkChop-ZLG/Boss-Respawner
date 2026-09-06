@@ -9,7 +9,6 @@
     "consume": true
   },
   "placement": {
-    "mode": "death_or_home",
     "offset": [0, 1, 0],
     "search_down": 32,
     "search_up": 16,
@@ -24,22 +23,16 @@
     "biomes": []
   },
   "spawn": {
-    "delay_ticks": 60,
+    "delay_ticks": 20,
     "require_player_nearby": true,
-    "player_range": 16.0,
+    "player_range": 9.0,
     "allow_peaceful": false,
     "count": 1,
-    "spawn_offset": [0, 1, 0],
+    "spawn_offset": [0, 0, 0],
     "nbt": "",
     "finalize_spawn": true,
-    "set_home_to_cage": false,
-    "max_attempts": -1,
-    "retry_interval_ticks": 20
-  },
-  "visual": {
-    "show_entity": true,
-    "show_item": true,
-    "entity_scale": "auto"
+    "max_attempts": 20,
+    "retry_interval_ticks": 4
   },
   "duplicate": {
     "mode": "keep_existing",
