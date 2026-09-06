@@ -16,6 +16,8 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 public final class RespawnCagePlacer {
@@ -135,6 +137,9 @@ public final class RespawnCagePlacer {
         DebugLog.info("Removing existing cages: entity={} center={} radius={} chunks=[{},{}]-[{},{}]",
                 entityTypeId, center, r, minChunkX, minChunkZ, maxChunkX, maxChunkZ);
 
+        // Collect first, then destroy. Avoid modifying the chunk's BlockEntity map
+        // while iterating over it, which can cause ConcurrentModificationException.
+        List<BlockPos> toDestroy = new ArrayList<>();
         for (int cx = minChunkX; cx <= maxChunkX; cx++) {
             for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
                 LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
@@ -146,8 +151,8 @@ public final class RespawnCagePlacer {
                             && entityTypeId.equals(cage.getEntityTypeId())
                             && cage.getBlockPos().distSqr(center) <= radiusSq) {
                         if (level.getBlockState(cage.getBlockPos()).is(ModBlocks.BOSS_RESPAWNER.get())) {
-                            DebugLog.info("Destroying existing {} cage at {}", entityTypeId, cage.getBlockPos());
-                            level.destroyBlock(cage.getBlockPos(), false);
+                            DebugLog.info("Queued existing {} cage for destruction at {}", entityTypeId, cage.getBlockPos());
+                            toDestroy.add(cage.getBlockPos());
                         } else {
                             DebugLog.info("Skipping orphaned/stale {} BlockEntity at {} (actual block state={})",
                                     entityTypeId, cage.getBlockPos(), level.getBlockState(cage.getBlockPos()));
@@ -155,6 +160,11 @@ public final class RespawnCagePlacer {
                     }
                 }
             }
+        }
+
+        for (BlockPos pos : toDestroy) {
+            DebugLog.info("Destroying existing {} cage at {}", entityTypeId, pos);
+            level.destroyBlock(pos, false);
         }
     }
 

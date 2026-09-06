@@ -1,10 +1,13 @@
 # 通用Boss重生笼 vs 灾变Boss重生笼：详细对比
 
+> **重要提示：** 本文保留较多 v1 设计对比内容。当前模组实现以 `README.md` 和 `docs/universal-boss-respawner-design-v2.md` 为准。
+> 文中 `HomePos` / `visual.*` / 每区块限制 / `set_home_to_cage` / `HomePosLocator` 均已在 v2 中移除，不代表当前实现。
+>
 > **更新（2026-09-05）：** 本模组已按代码审查调整设计：
 > - 不再支持 HomePos / 老巢，只在死亡地点生成。
 > - 移除 `visual.*`，始终渲染预览。
 > - 移除每区块重生笼数量限制。
-> - `max_attempts` 默认 10，失败后重置并警告。
+> - `max_attempts` 默认 20，失败后重置并警告。
 
 **参考版本：**
 - 本模组：`boss_respawner`（Minecraft 1.21.1 / NeoForge 21.1.219）

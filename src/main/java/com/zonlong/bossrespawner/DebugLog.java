@@ -8,6 +8,10 @@ public final class DebugLog {
     private DebugLog() {
     }
 
+    public static boolean isEnabled() {
+        return Config.DEBUG_INFO.getAsBoolean();
+    }
+
     public static void info(String message, Object... args) {
         if (Config.DEBUG_INFO.getAsBoolean()) {
             UniversalBossRespawner.LOGGER.info("[BossRespawner-Debug] " + message, args);

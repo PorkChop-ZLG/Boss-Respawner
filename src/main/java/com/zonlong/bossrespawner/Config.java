@@ -13,7 +13,8 @@ public final class Config {
             .define("general.enableMod", true);
 
     public static final ModConfigSpec.BooleanValue DEBUG_INFO = BUILDER
-            .comment("Debug logging. When true, prints debug information about Boss respawner placement and spawning to the log.")
+            .comment("Debug logging. When true, prints debug information about Boss respawner placement and spawning to the log.",
+                    "NOTE: The TOML key remains general.logPlacement for compatibility with older configs; it now controls debug information, not just placement logs.")
             .translation("boss_respawner.configuration.general.debugInfo")
             .define("general.logPlacement", false);
 

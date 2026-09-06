@@ -209,7 +209,7 @@ data/<namespace>/boss_respawner/entries/<任意文件名>.json
 | 字段 | 类型 | 必填/选填 | 默认值 | 说明 |
 |---|---|---|---|---|
 | `mode` | string | 选填 | `allow_multiple` | `allow_multiple`：不检查附近已有笼，直接放置；`keep_existing`：附近已有真实重生笼时不再放置新笼；`replace_existing`：附近已有真实重生笼时先移除旧笼再放置新笼。 |
-| `search_radius` | int | 选填 | `16` | 重复检查半径，最小 `0`。仅在 `mode` 不是 `allow_multiple` 时生效。 |
+| `search_radius` | int | 选填 | `16` | 重复检查半径，最小 `0`，实际最大检查半径为 `32`。仅在 `mode` 不是 `allow_multiple` 时生效。 |
 
 > 重复检测只会统计真实存在的 `boss_respawner` 方块，不会把残留的幽灵 BlockEntity 当作已有重生笼。
 
@@ -236,6 +236,7 @@ data/<namespace>/boss_respawner/entries/<任意文件名>.json
 ```toml
 [general]
 # 调试信息：在日志中打印 Boss 重生笼的调试信息。默认 false。
+# 注意：TOML 键名保留为 logPlacement，仅为兼容旧配置，实际含义是“调试信息”。
 enableMod = true
 logPlacement = false
 

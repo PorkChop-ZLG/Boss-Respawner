@@ -221,6 +221,11 @@ public record RespawnEntry(
             String nbt = getString(obj, "nbt", "");
             boolean finalizeSpawn = getBoolean(obj, "finalize_spawn", true);
             int maxAttempts = getInt(obj, "max_attempts", 20);
+            if (maxAttempts < 0) {
+                maxAttempts = -1;
+            } else if (maxAttempts == 0) {
+                maxAttempts = 20;
+            }
             int retryIntervalTicks = Math.max(1, getInt(obj, "retry_interval_ticks", 4));
             return new SpawnRule(delayTicks, requirePlayerNearby, playerRange, allowPeaceful,
                     count, spawnOffset, nbt, finalizeSpawn, maxAttempts, retryIntervalTicks);
@@ -231,6 +236,10 @@ public record RespawnEntry(
         static DuplicateRule fromJson(JsonObject obj) {
             // Default matches Cataclysm: no duplicate check, allow multiple respawn cages.
             String mode = getString(obj, "mode", "allow_multiple");
+            if (!List.of("allow_multiple", "keep_existing", "replace_existing").contains(mode)) {
+                UniversalBossRespawner.LOGGER.warn("Invalid duplicate.mode '{}', falling back to allow_multiple", mode);
+                mode = "allow_multiple";
+            }
             int searchRadius = Math.max(0, getInt(obj, "search_radius", 16));
             return new DuplicateRule(mode, searchRadius);
         }

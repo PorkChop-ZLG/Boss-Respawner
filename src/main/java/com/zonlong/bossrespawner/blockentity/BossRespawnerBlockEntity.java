@@ -217,7 +217,10 @@ public class BossRespawnerBlockEntity extends BlockEntity {
 
         BlockState state = level.getBlockState(worldPosition);
         if (state.hasProperty(BossRespawnerBlock.LIT)) {
-            level.setBlock(worldPosition, state.setValue(BossRespawnerBlock.LIT, false), 2);
+            BlockState litState = state;
+            BlockState unlitState = state.setValue(BossRespawnerBlock.LIT, false);
+            level.setBlock(worldPosition, unlitState, 2);
+            level.sendBlockUpdated(worldPosition, litState, unlitState, 3);
         }
 
         Component message = Component.translatable("boss_respawner.message.respawn_failed", entityTypeId);
@@ -443,8 +446,11 @@ public class BossRespawnerBlockEntity extends BlockEntity {
     }
 
     private static int normalizeMaxAttempts(int value) {
+        if (value < 0) {
+            return -1;
+        }
         if (value == 0) {
-            return 10;
+            return 20;
         }
         return value;
     }
