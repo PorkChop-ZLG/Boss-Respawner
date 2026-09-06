@@ -1,0 +1,41 @@
+﻿{
+  "schema_version": 1,
+  "enabled": true,
+  "priority": 0,
+  "entity": "legendary_monsters:frostbitten_golem",
+  "activation": {
+    "item": "legendary_monsters:eye_of_frost",
+    "amount": 1,
+    "consume": true
+  },
+  "placement": {
+    "offset": [0, 1, 0],
+    "search_down": 32,
+    "search_up": 16,
+    "horizontal_radius": 4,
+    "require_ground": true,
+    "avoid_fluids": true,
+    "avoid_blocks": ["cataclysm:boss_respawner"]
+  },
+  "death": {
+    "player_kill_only": false,
+    "dimensions": [],
+    "biomes": []
+  },
+  "spawn": {
+    "delay_ticks": 20,
+    "require_player_nearby": true,
+    "player_range": 9.0,
+    "allow_peaceful": false,
+    "count": 1,
+    "spawn_offset": [0, 0, 0],
+    "nbt": "",
+    "finalize_spawn": true,
+    "max_attempts": 20,
+    "retry_interval_ticks": 4
+  },
+  "duplicate": {
+    "mode": "allow_multiple",
+    "search_radius": 16
+  }
+}
