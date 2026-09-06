@@ -3,10 +3,25 @@
   "item.boss_respawner.boss_respawner": "通用Boss重生笼",
 
   "boss_respawner.configuration.title": "通用Boss重生笼配置",
-  "boss_respawner.configuration.section.boss_respawner.common.toml": "通用Boss重生笼配置",
-  "boss_respawner.configuration.section.boss_respawner.common.toml.title": "通用Boss重生笼配置",
+  "boss_respawner.configuration.section.boss.respawner.common.toml": "通用Boss重生笼配置",
+  "boss_respawner.configuration.section.boss.respawner.common.toml.title": "通用Boss重生笼配置",
+
+  "boss_respawner.configuration.general": "常规",
+  "boss_respawner.configuration.general.button": "编辑",
+  "boss_respawner.configuration.general.tooltip": "重生笼的全局行为设置。",
+  "boss_respawner.configuration.compat": "兼容性",
+  "boss_respawner.configuration.compat.button": "编辑",
+  "boss_respawner.configuration.compat.tooltip": "与其它模组共存时的兼容设置。",
+  "boss_respawner.configuration.limits": "限制",
+  "boss_respawner.configuration.limits.button": "编辑",
+  "boss_respawner.configuration.limits.tooltip": "重生笼放置数量的限制。",
+
   "boss_respawner.configuration.general.enableMod": "启用模组",
+  "boss_respawner.configuration.general.enableMod.tooltip": "Boss重生笼功能总开关。关闭后不会生成或召唤任何重生笼。",
   "boss_respawner.configuration.general.logPlacement": "记录放置日志",
-  "boss_respawner.configuration.compat.foreignCageBlockIds": "其它模组重生笼方块 ID",
-  "boss_respawner.configuration.limits.maxCagesPerChunk": "每区块最大重生笼数量"
+  "boss_respawner.configuration.general.logPlacement.tooltip": "记录重生笼的放置、跳过和生成事件。",
+  "boss_respawner.configuration.compat.foreignCageBlockIds": "其它模组重生笼方块ID",
+  "boss_respawner.configuration.compat.foreignCageBlockIds.tooltip": "将这些方块视为其它模组的重生笼/祭坛，放置本模组重生笼时会避开它们。",
+  "boss_respawner.configuration.limits.maxCagesPerChunk": "每区块最大重生笼数量",
+  "boss_respawner.configuration.limits.maxCagesPerChunk.tooltip": "每个已加载区块内最多允许存在的本模组重生笼数量；-1 表示不限。"
 }

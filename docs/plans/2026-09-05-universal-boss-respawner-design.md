@@ -504,11 +504,16 @@ findSafePos(serverLevel, origin, entry.placement):
 - 若最终找不到安全点，本次死亡不生成笼，并 `LOGGER.info`。
 - 放置时使用 `serverLevel.setBlock(pos, state, 2)`；随后立刻写方块实体。
 
-### 4.4 避免影响 Cataclysm 原版重生笼
+### 4.4 与 Cataclysm 原版重生笼的关系（刻意允许共存）
 
-- 默认不内置 Cataclysm 条目。
+- **设计决策：同一个 Boss 可以同时存在两套 Boss 重生笼，这是刻意设计，不是 Bug。**
+- 默认不内置 Cataclysm 条目，避免未配置时自动启用。
+- 但如果数据包作者显式配置了 Cataclysm Boss，本模组会按配置生成自己的重生笼；此时该 Boss 可能同时拥有：
+  - Cataclysm 原版重生笼；
+  - 本模组重生笼。
+- 两套笼可共存，玩家可分别使用；是否配置由数据包作者决定。
 - 数据层支持 `placement.avoid_blocks`，建议默认值包含 `"cataclysm:boss_respawner"`。
-- 模组 TOML 提供全局 `foreignCageBlockIds`，在放置前检查目标点附近是否有这些“别人的重生笼”；有则跳过。
+- 模组 TOML 提供全局 `foreignCageBlockIds`，它仅用于“不要把本模组笼直接放在其它模组的笼/祭坛方块上”，**不阻止**在附近另找位置放置第二个笼。
 - 不使用任何 Cataclysm 类，只做 Registry ID 字符串比较。
 
 ### 4.5 模组 Boss 特殊死亡流程 / 多阶段 / 子实体
@@ -662,12 +667,13 @@ maxCagesPerChunk = -1
 - JSON 管理器为空时，死亡事件直接返回。
 - 即使玩家只装本模组，不装任何数据包，也不会有任何 Boss 被额外放置重生笼。
 
-### 7.4 对 Cataclysm / 其它模组无副作用
+### 7.4 对 Cataclysm / 其它模组的共存策略
 
 - 不引用 Cataclysm/Lionfish 的类（渲染方案 B 下）。
 - 只按 Registry ID 匹配实体；没装对应模组时该 ID 不存在，条目被跳过。
-- 默认 `foreignCageBlockIds` 包含 `cataclysm:boss_respawner`，防止在 Cataclysm 自家 Boss 巢穴/结构附近叠放本模组笼。
-- 数据包作者必须**显式配置** Cataclysm Boss，本模组不会自动为 Cataclysm Boss 生效。
+- **刻意允许共存：** 如果数据包作者显式配置了 Cataclysm Boss，同一 Boss 可能同时存在 Cataclysm 原版重生笼和本模组重生笼；这是设计选择，不是冲突/Bug。
+- `foreignCageBlockIds` 默认包含 `cataclysm:boss_respawner`，仅用于避免把本模组笼直接放在 Cataclysm 重生笼/祭坛所在方块上。
+- 本模组不会自动为 Cataclysm Boss 生成条目；数据包作者必须显式配置才会启用。
 
 ### 7.5 对没有 HomePos 的普通生物
 
@@ -830,7 +836,7 @@ maxCagesPerChunk = -1
 - 数据包 `/reload` 前后行为。
 - 重启存档后已放置笼仍可工作（NBT 快照）。
 - 和平难度、无玩家、玩家过远等条件。
-- 与 Cataclysm 同装时，不干扰 Cataclysm 原版 Boss 重生笼。
+- 与 Cataclysm 同装时，允许同一 Boss 同时存在两套重生笼（刻意设计）；`foreignCageBlockIds` 只防止位置重叠。
 - 缺少目标模组时，JSON 条目被安全跳过。
 - 非法 JSON 不阻断服务器启动。
 
@@ -854,6 +860,7 @@ maxCagesPerChunk = -1
 2. **Cataclysm 美术授权：** 已确认全部美术资源获得授权，可以移植。
 3. **默认物品栏：** 已确认加入原版“刷怪蛋”Creative Tab（`CreativeModeTabs.SPAWN_EGGS`）。
 4. **默认 JSON：** 设计上最终不内置条目；当前开发阶段临时放置一个启用的监守者示例条目，发布前移除或禁用。
+5. **多套重生笼共存：** 已确认同一个 Boss 可同时存在多套 Boss 重生笼（如灾变原版 + 本模组），这是刻意设计，不属于冲突或 Bug。
 
 ---
 
@@ -863,7 +870,7 @@ maxCagesPerChunk = -1
 |---|---|---|
 | Cataclysm 美术资源版权 | 高 | 先授权；否则原创替代 |
 | 任意实体 `finalizeSpawn` 失败 | 中 | 失败保持 lit 重试；提供 NBT/自定义 |
-| 与 Cataclysm 原版机制冲突 | 中 | 默认无条目 + `foreignCageBlockIds` |
+| 同一 Boss 存在两套重生笼 | 低 | 刻意设计；默认不自动启用其它模组条目，可显式配置或禁用 |
 | HomePos 无统一标准 | 中 | `death_or_home` 默认，反射可选 |
 | 方块实体 NBT 跨版本 | 低 | 存字符串 ID + 快照，向前兼容 |
 | 客户端幽灵实体性能 | 低 | 缓存显示实体，限制渲染频率 |

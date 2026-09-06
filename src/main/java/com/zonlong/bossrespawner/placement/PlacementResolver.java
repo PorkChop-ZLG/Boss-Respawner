@@ -1,5 +1,6 @@
 package com.zonlong.bossrespawner.placement;
 
+import com.zonlong.bossrespawner.Config;
 import com.zonlong.bossrespawner.data.RespawnEntry;
 
 import net.minecraft.core.BlockPos;
@@ -10,6 +11,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,10 +28,17 @@ public final class PlacementResolver {
 
         BlockPos base = origin.get().offset(placement.offset()[0], placement.offset()[1], placement.offset()[2]);
 
+        List<String> avoidBlocks = new ArrayList<>(placement.avoidBlocks());
+        for (String foreign : Config.FOREIGN_CAGE_BLOCK_IDS.get()) {
+            if (!avoidBlocks.contains(foreign)) {
+                avoidBlocks.add(foreign);
+            }
+        }
+
         // Downward search first, matching Cataclysm's general behaviour.
         for (int dy = 0; dy <= placement.searchDown(); dy++) {
             BlockPos candidate = base.below(dy);
-            if (isLoadedAndValid(level, candidate, placement)) {
+            if (isLoadedAndValid(level, candidate, placement, avoidBlocks)) {
                 return Optional.of(candidate);
             }
         }
@@ -37,7 +46,7 @@ public final class PlacementResolver {
         // Upward search.
         for (int dy = 1; dy <= placement.searchUp(); dy++) {
             BlockPos candidate = base.above(dy);
-            if (isLoadedAndValid(level, candidate, placement)) {
+            if (isLoadedAndValid(level, candidate, placement, avoidBlocks)) {
                 return Optional.of(candidate);
             }
         }
@@ -51,7 +60,7 @@ public final class PlacementResolver {
                         continue;
                     }
                     BlockPos candidate = base.offset(dx, 0, dz);
-                    if (isLoadedAndValid(level, candidate, placement)) {
+                    if (isLoadedAndValid(level, candidate, placement, avoidBlocks)) {
                         return Optional.of(candidate);
                     }
                 }
@@ -73,7 +82,7 @@ public final class PlacementResolver {
     }
 
     private static boolean isLoadedAndValid(ServerLevel level, BlockPos pos,
-                                            RespawnEntry.PlacementRule placement) {
+                                            RespawnEntry.PlacementRule placement, List<String> avoidBlocks) {
         if (!level.isLoaded(pos) || !level.isLoaded(pos.below())) {
             return false;
         }
@@ -93,7 +102,7 @@ public final class PlacementResolver {
             }
         }
 
-        if (isAvoided(state, placement.avoidBlocks()) || isAvoided(level.getBlockState(pos.below()), placement.avoidBlocks())) {
+        if (isAvoided(state, avoidBlocks) || isAvoided(level.getBlockState(pos.below()), avoidBlocks)) {
             return false;
         }
         return true;
