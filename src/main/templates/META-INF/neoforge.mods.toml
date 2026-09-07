@@ -33,20 +33,20 @@ displayName="${mod_name}" #mandatory
 #updateJSONURL="https://change.me.example.invalid/updates.json" #optional
 
 # A URL for the "homepage" for this mod, displayed in the mod UI
-#displayURL="https://change.me.to.your.mods.homepage.example.invalid/" #optional
+displayURL="https://github.com/PorkChop-ZLG/Boss-Respawner/" #optional
 
 # A file name (in the root of the mod JAR) containing a logo for display
-#logoFile="examplemod.png" #optional
+logoFile="${mod_id}.png" #optional
 
 # A text field displayed in the mod UI
-#credits="" #optional
+credits="L_Ender" #optional
 
 # The authors of the mod, displayed in the mod UI (optional)
 authors="PorkChop-ZLG"
 
 # The description text for the mod (multi line!) (#mandatory)
 description='''
-将灾变中的Boss重生笼独立出来，适用于所有模组的Boss和生物。
+将灾变中的Boss重生笼机制做成独立的模组，可用于所有模组的Boss和生物。
 '''
 
 # The [[mixins]] block allows you to declare your mixin config to FML so that it gets loaded.
