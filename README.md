@@ -107,12 +107,12 @@ data/<namespace>/boss_respawner/entries/<任意文件名>.json
     "consume": true
   },
   "placement": {
-    "offset": [0, 1, 0],
+    "offset": [0, 0, 0],
     "search_down": 32,
     "search_up": 16,
     "horizontal_radius": 4,
     "require_ground": true,
-    "avoid_fluids": true,
+    "avoid_fluids": false,
     "avoid_blocks": ["cataclysm:boss_respawner"]
   },
   "death": {
@@ -173,7 +173,7 @@ data/<namespace>/boss_respawner/entries/<任意文件名>.json
 | `search_up` | int | 选填 | `16` | 从偏移点向上搜索的最大格数，最小 `0`。 |
 | `horizontal_radius` | int | 选填 | `4` | 垂直搜索失败后，水平螺旋搜索的半径，最小 `0`。 |
 | `require_ground` | bool | 选填 | `true` | 是否要求重生笼下方有可站立的完整方块。 |
-| `avoid_fluids` | bool | 选填 | `true` | 是否避免把重生笼放在流体中或流体上方。 |
+| `avoid_fluids` | bool | 选填 | `false` | 是否避免把重生笼放在流体中或流体上方；默认不避流体。 |
 | `avoid_blocks` | string[] | 选填 | `[]` | 避免作为重生笼位置或支撑位置的方块 ID 列表。会额外合并 TOML 中的 `foreignCageBlockIds`。 |
 
 #### `death`：死亡触发条件

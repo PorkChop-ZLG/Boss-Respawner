@@ -36,12 +36,12 @@ data/<namespace>/boss_respawner/entries/*.json
     "consume": true
   },
   "placement": {
-    "offset": [0, 1, 0],
+    "offset": [0, 0, 0],
     "search_down": 32,
     "search_up": 16,
     "horizontal_radius": 4,
     "require_ground": true,
-    "avoid_fluids": true,
+    "avoid_fluids": false,
     "avoid_blocks": ["cataclysm:boss_respawner"]
   },
   "death": {
@@ -76,7 +76,8 @@ data/<namespace>/boss_respawner/entries/*.json
 | `activation.item` | 钥匙物品 ID |
 | `activation.amount` | 消耗数量 |
 | `activation.consume` | 是否消耗 |
-| `placement.offset` | 死亡点偏移 |
+| `placement.offset` | 死亡点偏移，默认 `[0,0,0]` |
+| `placement.avoid_fluids` | 是否避免把重生笼放在流体中或流体上方，默认 `false` |
 | `spawn.delay_ticks` | 点亮到尝试生成的延迟，默认 20 |
 | `spawn.player_range` | 附近玩家检测范围，默认 9 |
 | `spawn.spawn_offset` | 生成实体相对重生笼的偏移，默认 `[0,0,0]` |

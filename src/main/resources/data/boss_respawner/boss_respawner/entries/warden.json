@@ -9,12 +9,12 @@
     "consume": true
   },
   "placement": {
-    "offset": [0, 1, 0],
+    "offset": [0, 0, 0],
     "search_down": 32,
     "search_up": 16,
     "horizontal_radius": 4,
     "require_ground": true,
-    "avoid_fluids": true,
+    "avoid_fluids": false,
     "avoid_blocks": ["cataclysm:boss_respawner"]
   },
   "death": {

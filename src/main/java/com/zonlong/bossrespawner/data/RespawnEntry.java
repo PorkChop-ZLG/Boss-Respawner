@@ -192,7 +192,7 @@ public record RespawnEntry(
             int searchUp = Math.max(0, getInt(obj, "search_up", 16));
             int horizontalRadius = Math.max(0, getInt(obj, "horizontal_radius", 4));
             boolean requireGround = getBoolean(obj, "require_ground", true);
-            boolean avoidFluids = getBoolean(obj, "avoid_fluids", true);
+            boolean avoidFluids = getBoolean(obj, "avoid_fluids", false);
             List<String> avoidBlocks = getStringList(obj, "avoid_blocks");
             return new PlacementRule(offset, searchDown, searchUp, horizontalRadius,
                     requireGround, avoidFluids, avoidBlocks);

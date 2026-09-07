@@ -9,7 +9,7 @@
     "consume": true
   },
   "placement": {
-    "offset": [0, 1, 0],
+    "offset": [0, 0, 0],
     "search_down": 32,
     "search_up": 16,
     "horizontal_radius": 4,

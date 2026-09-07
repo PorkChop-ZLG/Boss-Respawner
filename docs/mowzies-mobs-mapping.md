@@ -23,7 +23,7 @@
 
 钢铁守护者的 Boss 重生笼**允许在水中生成**。
 
-因此对应的 JSON 条目中，`placement.avoid_fluids` 应设置为 `false`，否则水下的死亡点可能因为避流体逻辑而找不到放置位置。
+本次设计调整后，`placement.avoid_fluids` 的默认值已改为 `false`，因此默认就允许在水中放置。若后续某个 Boss 需要避免水中生成，可在对应条目中显式设置 `"avoid_fluids": true`。
 
 ```json
 {

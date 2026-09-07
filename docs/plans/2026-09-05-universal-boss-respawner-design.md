@@ -170,12 +170,12 @@ D:\Minecraft\Boss-Respawner
   // 重生笼生成位置
   "placement": {
     "mode": "death_or_home",      // death | home | death_or_home
-    "offset": [0, 1, 0],          // 对最终位置的手动偏移
+    "offset": [0, 0, 0],          // 对最终位置的手动偏移
     "search_down": 32,
     "search_up": 16,
     "horizontal_radius": 4,
     "require_ground": true,
-    "avoid_fluids": true,
+    "avoid_fluids": false,
     "avoid_blocks": ["cataclysm:boss_respawner"]
   },
 
@@ -233,7 +233,7 @@ D:\Minecraft\Boss-Respawner
 | `placement.search_up` | int | 16 | 向上搜索最大格数 |
 | `placement.horizontal_radius` | int | 4 | 垂直找不到时水平螺旋搜索半径 |
 | `placement.require_ground` | bool | true | 要求下方有可站立方块 |
-| `placement.avoid_fluids` | bool | true | 避免放在流体中 |
+| `placement.avoid_fluids` | bool | false | 是否避免放在流体中；默认不避流体 |
 | `placement.avoid_blocks` | string[] | `[]` | 若目标/候选被这些方块占用则跳过；默认模组会内置建议 `cataclysm:boss_respawner`（见 7.4） |
 | `death.player_kill_only` | bool | false | 只有玩家（含间接击杀）导致死亡才生成 |
 | `death.dimensions` | string[] | `[]` | 空=全部；例如 `["minecraft:overworld"]` |
@@ -311,12 +311,12 @@ D:\Minecraft\Boss-Respawner
   },
   "placement": {
     "mode": "death_or_home",
-    "offset": [0, 1, 0],
+    "offset": [0, 0, 0],
     "search_down": 32,
     "search_up": 16,
     "horizontal_radius": 4,
     "require_ground": true,
-    "avoid_fluids": true,
+    "avoid_fluids": false,
     "avoid_blocks": ["cataclysm:boss_respawner"]
   },
   "death": {
