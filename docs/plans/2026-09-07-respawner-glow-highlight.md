@@ -77,11 +77,12 @@
    ```java
    import net.minecraft.client.renderer.OutlineBufferSource;
    ```
-2. 在 `render(...)` 中判断是否启用高亮：
+2. 在 `render(...)` 中判断是否启用高亮；先读配置开关，关闭时不调用 BE 的距离判断方法：
    ```java
    Minecraft minecraft = Minecraft.getInstance();
    MultiBufferSource cageBuffer = buffer;
-   if (minecraft.player != null && be.hasCustomOutlineRendering(minecraft.player)) {
+   boolean highlightEnabled = Config.HIGHLIGHT_BOSS_RESPAWNER.getAsBoolean();
+   if (highlightEnabled && minecraft.player != null && be.hasCustomOutlineRendering(minecraft.player)) {
        OutlineBufferSource outline = minecraft.renderBuffers().outlineBufferSource();
        outline.setColor(255, 255, 255, 255);
        cageBuffer = outline;
@@ -190,6 +191,38 @@
 - Gradle build 成功。
 
 ---
+
+## Performance Considerations
+
+- 范围检测不是按 32×32×32 或半径内方块逐格扫描。实现依赖 Minecraft 自身每帧对“可见 BlockEntity”的遍历：
+  - NeoForge `LevelRenderer` 在渲染每个可见 BlockEntity 前会调用 `hasCustomOutlineRendering(Player)`；
+  - 我们的实现只在该方法中做一次平方距离判断，不触发区块加载、不做注册表查询、不开平方根；
+  - 复杂度为 O(N)，N = 当前视锥内可见的 BossRespawner 方块实体数量。
+- “每帧检测”存在，但代价很低：
+  - LevelRenderer 对每个可见重生笼调用一次 `hasCustomOutlineRendering`；
+  - 渲染器为决定是否使用 `OutlineBufferSource` 会再调用一次同一判断；
+  - 两次均为整数平方比较 + 配置读取，数量级可忽略；若实测需要，可后续合并为一次判断。
+- 主要渲染开销：
+  - 只要有一个启用的重生笼进入描边，Minecraft 就会执行一次原版实体 outline 后处理全屏 pass；
+  - 启用描边的重生笼模型会同时写入普通 buffer 与 outline buffer，即少量顶点双写；
+  - 重生笼模型很小，顶点量可忽略；全屏 outline pass 是主要成本，与“视野内有一个发光实体”相同。
+- 范围/开关过滤位置：
+  - 先读配置开关，关闭时不计算距离；
+  - 再比较 `player.distanceToSqr(Vec3.atCenterOf(worldPosition)) <= range^2`；
+  - 超出范围或关闭配置时，不会请求 outline 后处理，也不会向 outline buffer 写入几何。
+- 关闭配置后的开销：
+  - 不计算距离；
+  - 不请求 outline 后处理；
+  - 不向 outline buffer 写入几何；
+  - 不执行全屏 outline pass；
+  - `LevelRenderer` 仍会对可见 BossRespawner 调用一次 `hasCustomOutlineRendering`，方法内部先读配置并直接返回 `false`；
+  - 渲染器先读配置开关，关闭时不会额外调用 BE 的距离判断方法。
+  - 因此可视为“接近 0 开销”；剩余仅为每个可见重生笼每帧一次布尔读取/方法分发，无 Boss 重生笼可见时对本模组而言没有额外开销。
+- 服务端无额外开销，所有逻辑只在客户端渲染线程执行。
+- 若未来出现大量重生笼或低端设备性能敏感，可通过：
+  - 保持默认 32 格；
+  - 将配置默认关闭或调小；
+  - 必要时回退到方案 B（线框）以避免每帧全屏 outline pass。
 
 ## Notes / Non-Goals
 

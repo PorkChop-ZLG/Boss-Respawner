@@ -2,6 +2,7 @@ package com.zonlong.bossrespawner.client.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
+import com.zonlong.bossrespawner.Config;
 import com.zonlong.bossrespawner.UniversalBossRespawner;
 import com.zonlong.bossrespawner.block.BossRespawnerBlock;
 import com.zonlong.bossrespawner.blockentity.BossRespawnerBlockEntity;
@@ -9,6 +10,7 @@ import com.zonlong.bossrespawner.client.model.BossRespawnerModel;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.OutlineBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
@@ -55,7 +57,16 @@ public class BossRespawnerBlockEntityRenderer implements BlockEntityRenderer<Bos
             MODEL.animateOpening(be.getAnimationState("opening"), be.tickCount + partialTick);
         }
 
-        MODEL.renderToBuffer(poseStack, buffer.getBuffer(RenderType.entityCutoutNoCull(TEXTURE)),
+        Minecraft minecraft = Minecraft.getInstance();
+        MultiBufferSource cageBuffer = buffer;
+        boolean highlightEnabled = Config.HIGHLIGHT_BOSS_RESPAWNER.getAsBoolean();
+        if (highlightEnabled && minecraft.player != null && be.hasCustomOutlineRendering(minecraft.player)) {
+            OutlineBufferSource outline = minecraft.renderBuffers().outlineBufferSource();
+            outline.setColor(255, 255, 255, 255);
+            cageBuffer = outline;
+        }
+
+        MODEL.renderToBuffer(poseStack, cageBuffer.getBuffer(RenderType.entityCutoutNoCull(TEXTURE)),
                 packedLight, packedOverlay);
         poseStack.popPose();
 

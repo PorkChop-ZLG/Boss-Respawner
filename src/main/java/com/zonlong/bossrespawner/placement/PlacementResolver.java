@@ -120,7 +120,7 @@ public final class PlacementResolver {
         return true;
     }
 
-    private static boolean isAvoided(BlockState state, List<String> avoidBlocks) {
+    static boolean isAvoided(BlockState state, List<? extends String> avoidBlocks) {
         if (avoidBlocks == null || avoidBlocks.isEmpty()) {
             return false;
         }

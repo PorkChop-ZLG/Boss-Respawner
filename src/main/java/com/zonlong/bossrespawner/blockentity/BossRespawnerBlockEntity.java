@@ -1,5 +1,6 @@
 package com.zonlong.bossrespawner.blockentity;
 
+import com.zonlong.bossrespawner.Config;
 import com.zonlong.bossrespawner.DebugLog;
 import com.zonlong.bossrespawner.UniversalBossRespawner;
 import com.zonlong.bossrespawner.block.BossRespawnerBlock;
@@ -269,6 +270,20 @@ public class BossRespawnerBlockEntity extends BlockEntity {
 
     public String getKeyItemId() {
         return keyItemId;
+    }
+
+    /**
+     * NeoForge client hook: enables vanilla outline post-processing for this BlockEntity.
+     * The actual outline geometry is submitted by {@link com.zonlong.bossrespawner.client.render.BossRespawnerBlockEntityRenderer}
+     * through Minecraft's {@link net.minecraft.client.renderer.OutlineBufferSource}.
+     */
+    @Override
+    public boolean hasCustomOutlineRendering(Player player) {
+        if (!Config.HIGHLIGHT_BOSS_RESPAWNER.getAsBoolean()) {
+            return false;
+        }
+        int range = Config.HIGHLIGHT_BOSS_RESPAWNER_RANGE.get();
+        return player.distanceToSqr(Vec3.atCenterOf(worldPosition)) <= (double) range * range;
     }
 
     public EntityType<?> getCachedEntityType() {

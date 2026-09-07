@@ -21,6 +21,7 @@
 - 默认最多尝试 20 次，失败后恢复未点亮、重置，并在聊天栏和日志输出警告。
 - 生成成功自动销毁重生笼。
 - 同一 Boss 可同时存在多套重生笼（刻意设计）。
+- 重生笼可被原版发光描边高亮，玩家可透过方块看到；开关与距离在 common 配置中调整。
 
 ## 获取方块
 
@@ -235,13 +236,20 @@ data/<namespace>/boss_respawner/entries/<任意文件名>.json
 
 ```toml
 [general]
-# 调试信息：在日志中打印 Boss 重生笼的调试信息。默认 false。
-# 注意：TOML 键名保留为 logPlacement，仅为兼容旧配置，实际含义是“调试信息”。
 enableMod = true
-logPlacement = false
+# 找不到安全位置时，是否在搜索原点强制放置重生笼。默认 true。
+forcePlaceOnNoSafeSpot = true
+# 是否用原版发光描边高亮 Boss 重生笼（客户端显示效果，配置在 common）。
+highlightBossRespawner = true
+# 高亮显示距离，单位为格。默认 32。
+highlightBossRespawnerRange = 32
 
 [compat]
 foreignCageBlockIds = ["cataclysm:boss_respawner"]
+
+[debug]
+# 调试信息：在日志中打印 Boss 重生笼的调试信息。默认 false。
+debugInfo = false
 ```
 
 ## 开发验证

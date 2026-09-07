@@ -32,14 +32,28 @@ public final class RespawnCagePlacer {
         }
 
         Optional<BlockPos> posOpt = PlacementResolver.findPlacementPos(level, entity, entry.placement());
-        if (posOpt.isEmpty()) {
-            DebugLog.info("No safe placement for {} respawn cage after death of {} at {}",
-                    actualEntityId, entity, entity.blockPosition());
-            return false;
-        }
+        BlockPos pos;
+        if (posOpt.isPresent()) {
+            pos = posOpt.get();
+            DebugLog.info("Selected placement position {} for {} respawn cage", pos, actualEntityId);
+        } else {
+            if (!Config.FORCE_PLACE_ON_NO_SAFE_SPOT.getAsBoolean()) {
+                DebugLog.info("No safe placement found and force placement is disabled; skipping {} respawn cage",
+                        actualEntityId);
+                return false;
+            }
 
-        BlockPos pos = posOpt.get();
-        DebugLog.info("Selected placement position {} for {} respawn cage", pos, actualEntityId);
+            int[] offset = entry.placement().offset();
+            pos = entity.blockPosition().offset(offset[0], offset[1], offset[2]);
+            if (isBlockedByForeignCage(level, pos)) {
+                DebugLog.info("Forced placement blocked at {} by foreignCageBlockIds for {} respawn cage",
+                        pos, actualEntityId);
+                return false;
+            }
+
+            DebugLog.info("No safe placement found; forcing respawn cage at search origin {} for {} respawn cage",
+                    pos, actualEntityId);
+        }
 
         if (!"allow_multiple".equals(entry.duplicate().mode())) {
             DebugLog.info("Checking existing cages: entity={} mode={} radius={} center={}",
@@ -58,37 +72,50 @@ public final class RespawnCagePlacer {
         }
 
         BlockState oldState = level.getBlockState(pos);
-        level.setBlock(pos, ModBlocks.BOSS_RESPAWNER.get().defaultBlockState(), 2);
-        BlockState newState = level.getBlockState(pos);
-
-        if (level.getBlockEntity(pos) instanceof BossRespawnerBlockEntity be) {
-            CompoundTag spawnNbt = parseNbt(entry.spawn().nbt());
-            be.setSpawnerData(
-                    actualEntityId,
-                    entry.activation().item().toString(),
-                    entry.activation().amount(),
-                    entry.activation().consume(),
-                    spawnNbt,
-                    entry.spawn().delayTicks(),
-                    entry.spawn().requirePlayerNearby(),
-                    entry.spawn().playerRange(),
-                    entry.spawn().allowPeaceful(),
-                    entry.spawn().count(),
-                    entry.spawn().spawnOffset(),
-                    entry.spawn().finalizeSpawn(),
-                    entry.spawn().maxAttempts(),
-                    entry.spawn().retryIntervalTicks());
-            DebugLog.info("Set spawner data on newly placed cage: entity={} key={} amount={} consume={} delay={} maxAttempts={}",
-                    actualEntityId, entry.activation().item(), entry.activation().amount(),
-                    entry.activation().consume(), entry.spawn().delayTicks(), entry.spawn().maxAttempts());
-        } else {
-            DebugLog.info("WARNING: newly placed cage at {} has no BossRespawnerBlockEntity!", pos);
+        if (!level.setBlock(pos, ModBlocks.BOSS_RESPAWNER.get().defaultBlockState(), 2)) {
+            UniversalBossRespawner.LOGGER.warn("Failed to set Boss respawner block at {}", pos);
+            return false;
         }
+        BlockState newState = level.getBlockState(pos);
+        if (!newState.is(ModBlocks.BOSS_RESPAWNER.get())) {
+            UniversalBossRespawner.LOGGER.warn("Boss respawner block was not set at {}", pos);
+            return false;
+        }
+        if (!(level.getBlockEntity(pos) instanceof BossRespawnerBlockEntity be)) {
+            UniversalBossRespawner.LOGGER.warn("Boss respawner block at {} has no BossRespawnerBlockEntity", pos);
+            return false;
+        }
+
+        CompoundTag spawnNbt = parseNbt(entry.spawn().nbt());
+        be.setSpawnerData(
+                actualEntityId,
+                entry.activation().item().toString(),
+                entry.activation().amount(),
+                entry.activation().consume(),
+                spawnNbt,
+                entry.spawn().delayTicks(),
+                entry.spawn().requirePlayerNearby(),
+                entry.spawn().playerRange(),
+                entry.spawn().allowPeaceful(),
+                entry.spawn().count(),
+                entry.spawn().spawnOffset(),
+                entry.spawn().finalizeSpawn(),
+                entry.spawn().maxAttempts(),
+                entry.spawn().retryIntervalTicks());
+        DebugLog.info("Set spawner data on newly placed cage: entity={} key={} amount={} consume={} delay={} maxAttempts={}",
+                actualEntityId, entry.activation().item(), entry.activation().amount(),
+                entry.activation().consume(), entry.spawn().delayTicks(), entry.spawn().maxAttempts());
 
         level.sendBlockUpdated(pos, oldState, newState, 3);
 
         DebugLog.info("Placed {} respawn cage at {}", actualEntityId, pos);
         return true;
+    }
+
+    private static boolean isBlockedByForeignCage(ServerLevel level, BlockPos pos) {
+        List<? extends String> foreignIds = Config.FOREIGN_CAGE_BLOCK_IDS.get();
+        return PlacementResolver.isAvoided(level.getBlockState(pos), foreignIds)
+                || PlacementResolver.isAvoided(level.getBlockState(pos.below()), foreignIds);
     }
 
     private static boolean hasExistingCage(ServerLevel level, BlockPos center, String entityTypeId, int radius) {
