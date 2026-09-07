@@ -127,6 +127,9 @@ dependencies {
     runtimeOnly "curse.maven:curios-309927:6529130"
     runtimeOnly "curse.maven:lionfish-api-1001614:8345326"
     runtimeOnly "curse.maven:legendary-monsters-944035:8715533"
+    runtimeOnly "curse.maven:geckolib-388172:8350073"
+    runtimeOnly "curse.maven:mowzies-mobs-250498:7760267"
+    runtimeOnly "curse.maven:tslatentitystatus-tes-830420:7115952"
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

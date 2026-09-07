@@ -260,7 +260,3 @@ gradlew.bat build
 gradlew.bat runServer
 gradlew.bat runClient
 ```
-
-## 美术资源
-
-本模组使用的重生笼贴图来自 Cataclysm，并已获得作者授权移植。模型与动画代码按 Vanilla `ModelPart` / `AnimationDefinition` 重写，不依赖 Lionfish API。
