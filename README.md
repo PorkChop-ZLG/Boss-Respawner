@@ -1,14 +1,15 @@
 # Universal Boss Respawner（通用Boss重生笼）
 
-一个数据驱动的 NeoForge 1.21.1 模组：生物/Boss 死亡后，可按照 JSON 配置在死亡地点生成“重生笼”；玩家使用指定物品右键激活后，重生笼会重新召唤该生物。
+将 灾变 模组的 Boss重生笼 机制做成一个独立模组，并且改造为数据驱动系统。
 
-- **Mod ID：** `boss_respawner`
+生物/Boss 死亡后，可按照 JSON 配置在生成“重生笼”；玩家使用指定物品右键激活后，重生笼会重新召唤该生物。
+
+本模组的目的，是优化多人游戏下的Boss战体验，使得每个玩家在找到Boss结构后，都有Boss可以打，不用担心Boss被挑战完了后，需要重新寻找。
+
+- **Mod名：** `通用Boss重生笼`
+- **ModID：** `boss_respawner`
 - **环境：** Minecraft 1.21.1 / NeoForge 21.1.219 / Java 21
 - **定位：** 独立模组，不强依赖 Cataclysm 或任何具体 Boss 模组。
-
-> 当前开发阶段默认带有一个启用的 `minecraft:warden` 示例条目。
-> **正式发布前请移除或禁用** `src/main/resources/data/boss_respawner/boss_respawner/entries/minecraft/warden.json`，
-> 以保持“默认不干扰任何生物”的设计目标。
 
 ---
 
@@ -18,20 +19,53 @@
 - 方块实体保存实体类型、钥匙物品与生成参数快照。
 - 手持正确物品右键：消耗物品、点亮方块、播放动画。
 - 到达延迟后尝试生成目标实体；失败后按间隔重试。
-- 默认最多尝试 20 次，失败后恢复未点亮、重置，并在聊天栏和日志输出警告。
-- 生成成功自动销毁重生笼。
-- 同一 Boss 可同时存在多套重生笼（刻意设计）。
-- 重生笼可被原版发光描边高亮，玩家可透过方块看到；开关与距离在 common 配置中调整。
+- 生成成功后自动销毁重生笼。
+- 同一 Boss 可同时存在多套重生笼，也可以改为范围内只存在一个。
+- 重生笼可被原版发光描边高亮显示，玩家可透过方块看到；开关与距离在配置中调整。
 
 ## 获取方块
 
-本模组将重生笼 BlockItem 放入原版“刷怪蛋”创造模式标签页。
+本模组将Boss重生笼物品放入原版“刷怪蛋”创造模式标签页。
+
+生存模式下无法合成、破坏。
 
 也可通过命令获取：
 
 ```mcfunction
 /give @s boss_respawner:boss_respawner
 ```
+
+## 已完成的模组联动
+
+### 传奇怪物（Legendary Monsters）
+
+| Boss | 实体 ID | 复活物品 | 物品 ID |
+|---|---|---|---|
+| 云筑魔像 | `legendary_monsters:cloud_golem` | 大气之眼 | `legendary_monsters:eye_of_air` |
+| 堕落圣骑 | `legendary_monsters:posessed_paladin` | 鬼魂之眼 | `legendary_monsters:eye_of_ghost` |
+| 湮灭猎影 | `legendary_monsters:annihilation_pursuer` | 湮灭之眼 | `legendary_monsters:eye_of_annihilation` |
+| 无头骑士 | `legendary_monsters:beheaded_knight` | 鬼魂之眼 | `legendary_monsters:eye_of_ghost` |
+| 复生骑士 | `legendary_monsters:resurrected_knight` | 鬼魂之眼 | `legendary_monsters:eye_of_ghost` |
+| 沙丘哨兵 | `legendary_monsters:dune_sentinel` | 沙暴之眼 | `legendary_monsters:eye_of_sandstorm` |
+| 霜冻傀儡 | `legendary_monsters:frostbitten_golem` | 冰冻之眼 | `legendary_monsters:eye_of_frost` |
+| 蔓生巨像 | `legendary_monsters:overgrown_colossus` | 苔藓之眼 | `legendary_monsters:eye_of_moss` |
+| 荒古守卫者 | `legendary_monsters:ancient_guardian` | 阜骨之眼 | `legendary_monsters:eye_of_many_ribs` |
+| 噬焰蜥 | `legendary_monsters:lava_eater` | 岩浆之眼 | `legendary_monsters:eye_of_magma` |
+| 骸骨巨龙 | `legendary_monsters:skeletosaurus` | 尸骨之眼 | `legendary_monsters:eye_of_bones` |
+| 凋零恶煞 | `legendary_monsters:withered_abomination` | 灵魂之眼 | `legendary_monsters:eye_of_soul` |
+| 紫颂遣使 | `legendary_monsters:endersent` | 紫颂之眼 | `legendary_monsters:eye_of_chorus` |
+| 潜影拟态者 | `legendary_monsters:shulker_mimic` | 潜影之眼 | `legendary_monsters:eye_of_shulker` |
+> 注：湮灭构造体 为召唤Boss，所以无需Boss重生笼。
+
+### Mowzie's Mobs（Mowzie的生物）
+
+| Boss | 实体 ID | 复活物品 | 物品 ID |
+|---|---|---|---|
+| 钢铁守护者 | `mowziesmobs:ferrous_wroughtnaut` | 捕获的岩壳居蟹 | `mowziesmobs:captured_grottol` |
+| 霜冻巨兽 | `mowziesmobs:frostmaw` | 荧光胶冻 | `mowziesmobs:glowing_jelly` |
+| 太阳鸟-乌姆武提 | `mowziesmobs:umvuthi` | 飞蛇毒牙 | `mowziesmobs:naga_fang` |
+| 雕刻家-通臂大师 | `mowziesmobs:sculptor` | 泥峭棒 | `mowziesmobs:bluff_rod` |
+> 注：Mowzie的生物 没有对应的眼球物品，暂时使用其他生物的掉落物。
 
 ## JSON 配置
 
@@ -92,8 +126,6 @@ data/<namespace>/boss_respawner/entries/<任意文件名>.json
 ---
 
 ### 完整示例：监守者
-
-文件：`data/my_pack/boss_respawner/entries/minecraft/warden.json`
 
 ```json
 {
