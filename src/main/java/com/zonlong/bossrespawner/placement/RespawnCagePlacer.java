@@ -129,10 +129,14 @@ public final class RespawnCagePlacer {
     /**
      * Re-runs the pipeline for a task that was deferred. Uses the stored rule snapshot, so a later
      * {@code /reload} cannot change how the original death is handled.
+     *
+     * <p>Takes the {@link MinecraftServer} rather than a {@link ServerLevel} on purpose: a task whose
+     * target dimension has disappeared must still be able to run, so that it can be failed and cleaned up
+     * instead of waiting forever for a chunk load that can never happen.
      */
-    public static Outcome executeDeferred(ServerLevel level, PendingPlacementTask task) {
+    public static Outcome executeDeferred(MinecraftServer server, PendingPlacementTask task) {
         return execute(new Request(
-                level.getServer(),
+                server,
                 task.targetDimension(),
                 task.targetBase(),
                 task.lastSourceEntityUuid(),

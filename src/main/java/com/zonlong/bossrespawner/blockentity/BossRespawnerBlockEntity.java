@@ -197,10 +197,14 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                     discardAll(created);
                     return false;
                 }
-                entity.setPos(spawnPos);
+                // Order matters: Entity.load() reads the "Pos" list without a contains() guard, and
+                // ListTag.getDouble() returns 0.0 for a missing element. So loading NBT that has no "Pos"
+                // tag teleports the entity to (0, 0, 0). Applying the NBT first and the position second
+                // keeps the cage position authoritative, which is what spawn_offset is for.
                 if (!spawnNbt.isEmpty()) {
                     entity.load(spawnNbt);
                 }
+                entity.setPos(spawnPos);
                 if (entity instanceof Mob mob && finalizeSpawn) {
                     mob.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(pos), MobSpawnType.SPAWNER, null);
                 }

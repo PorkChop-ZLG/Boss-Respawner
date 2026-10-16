@@ -334,7 +334,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 | `allow_peaceful` | bool | 选填 | `false` | 是否允许在和平难度下生成 |
 | `count` | int | 选填 | `1` | 一次生成的实体数量，最小 `1`。`count > 1` 时同一批实体继承同一个 Home |
 | `spawn_offset` | int[3] | 选填 | `[0, 0, 0]` | 实体生成位置相对重生笼方块的偏移 |
-| `nbt` | string | 选填 | `""` | 生成实体时额外写入的 SNBT。非空但无法解析时整条跳过 |
+| `nbt` | string | 选填 | `""` | 生成实体时额外写入的 SNBT。非空但无法解析时整条跳过。**不要在这里写 `Pos`**：实体的最终位置由重生笼方块坐标 + `spawn_offset` 决定，NBT 中的位置会被覆盖 |
 | `finalize_spawn` | bool | 选填 | `true` | 对 `Mob` 是否调用 `finalizeSpawn` |
 | `max_attempts` | int | 选填 | `20` | 最大尝试次数。`-1` 表示无限。达到上限后恢复未点亮并重置 |
 | `retry_interval_ticks` | int | 选填 | `4` | 生成失败后的重试间隔，最小 `1` |

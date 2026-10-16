@@ -7,6 +7,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
@@ -67,7 +68,16 @@ public class BossHomeSavedData extends SavedData {
 
     private final Map<UUID, HomeRecord> homes = new HashMap<>();
     private final Map<PendingPlacementTask.Key, PendingPlacementTask> pending = new HashMap<>();
-    private final Map<ResourceKey<Level>, Map<Long, Set<PendingPlacementTask.Key>>> byChunk = new HashMap<>();
+
+    /**
+     * {@code (dimension, ChunkPos)} -> task keys.
+     *
+     * <p>Keyed by {@link ResourceLocation} rather than {@link ResourceKey} on purpose: {@code ResourceKey}
+     * does not override {@code equals}/{@code hashCode} and relies on an interning map with weak values, so
+     * two keys for the same dimension can be distinct instances. Using one as a hash key would make lookups
+     * silently miss. {@code ResourceLocation} has real value semantics.
+     */
+    private final Map<ResourceLocation, Map<Long, Set<PendingPlacementTask.Key>>> byChunk = new HashMap<>();
 
     /**
      * Set when the file on disk was written by a newer build. All writes are suppressed in that state so
@@ -193,7 +203,7 @@ public class BossHomeSavedData extends SavedData {
      * {@code ChunkEvent.Load} fires extremely often, so a linear scan would degrade with world size.
      */
     public List<PendingPlacementTask> pendingForChunk(ResourceKey<Level> dimension, long chunkPos) {
-        Map<Long, Set<PendingPlacementTask.Key>> perDimension = byChunk.get(dimension);
+        Map<Long, Set<PendingPlacementTask.Key>> perDimension = byChunk.get(dimension.location());
         if (perDimension == null) {
             return List.of();
         }
@@ -216,13 +226,14 @@ public class BossHomeSavedData extends SavedData {
     }
 
     private void index(PendingPlacementTask task) {
-        byChunk.computeIfAbsent(task.targetDimension(), k -> new HashMap<>())
+        byChunk.computeIfAbsent(task.targetDimension().location(), k -> new HashMap<>())
                 .computeIfAbsent(task.chunkPos(), k -> new HashSet<>())
                 .add(task.key());
     }
 
     private void unindex(PendingPlacementTask task) {
-        Map<Long, Set<PendingPlacementTask.Key>> perDimension = byChunk.get(task.targetDimension());
+        Map<Long, Set<PendingPlacementTask.Key>> perDimension =
+                byChunk.get(task.targetDimension().location());
         if (perDimension == null) {
             return;
         }
@@ -235,7 +246,7 @@ public class BossHomeSavedData extends SavedData {
             perDimension.remove(task.chunkPos());
         }
         if (perDimension.isEmpty()) {
-            byChunk.remove(task.targetDimension());
+            byChunk.remove(task.targetDimension().location());
         }
     }
 

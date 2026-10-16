@@ -1,0 +1,42 @@
+{
+  "_comment": "NEGATIVE TEST: schema_version 2 but a schema v1 flat placement. Must be rejected with the dedicated 'schema v1 flat placement layout' warning.",
+  "schema_version": 2,
+  "enabled": true,
+  "priority": 0,
+  "entity": "minecraft:creeper",
+  "activation": {
+    "item": "minecraft:gunpowder",
+    "amount": 1,
+    "consume": false
+  },
+  "placement": {
+    "offset": [0, 0, 0],
+    "search_down": 32,
+    "search_up": 16,
+    "horizontal_radius": 4,
+    "require_ground": true,
+    "avoid_fluids": false,
+    "avoid_blocks": []
+  },
+  "death": {
+    "player_kill_only": false,
+    "dimensions": [],
+    "biomes": []
+  },
+  "spawn": {
+    "delay_ticks": 20,
+    "require_player_nearby": true,
+    "player_range": 9.0,
+    "allow_peaceful": false,
+    "count": 1,
+    "spawn_offset": [0, 0, 0],
+    "nbt": "",
+    "finalize_spawn": true,
+    "max_attempts": 20,
+    "retry_interval_ticks": 4
+  },
+  "duplicate": {
+    "mode": "allow_multiple",
+    "search_radius": 16
+  }
+}
