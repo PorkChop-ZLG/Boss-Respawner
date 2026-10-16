@@ -28,9 +28,10 @@
   "boss_respawner.configuration.compat.protectedBlockIds": "受保护方块ID",
   "boss_respawner.configuration.compat.protectedBlockIds.tooltip": "本模组在任何情况下都不得覆盖这些方块，即使规则设了 force_place。规则里的 protected_blocks 只能追加，不能移除这里的条目。",
 
-  "boss_respawner.jade.boss": "重生Boss：%s",
-  "boss_respawner.jade.key_item": "重生物品：",
+  "boss_respawner.jade.boss": "复活：%s",
   "boss_respawner.jade.amount": "×%s",
+
+  "config.jade.plugin_boss_respawner.cage_contents": "重生笼内容",
 
   "boss_respawner.message.respawn_failed": "Boss重生笼在多次尝试后仍无法召唤生物，已重置。"
 }

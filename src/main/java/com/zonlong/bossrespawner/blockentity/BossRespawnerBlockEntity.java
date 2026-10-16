@@ -140,9 +140,16 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         }
     }
 
+    /**
+     * Whether the stack is this cage's key item at all.
+     *
+     * <p>Deliberately says nothing about how many are required: {@code activation.amount} is a total across
+     * the whole inventory, so one stack can never answer that on its own. See
+     * {@link com.zonlong.bossrespawner.activation.KeyItemPayment}.
+     */
     public boolean matchesKeyItem(ItemStack stack) {
         Item item = getCachedKeyItem();
-        return item != null && stack.is(item) && stack.getCount() >= keyAmount;
+        return item != null && stack.is(item);
     }
 
     public int getKeyAmount() {

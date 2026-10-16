@@ -28,9 +28,10 @@
   "boss_respawner.configuration.compat.protectedBlockIds": "Protected Block IDs",
   "boss_respawner.configuration.compat.protectedBlockIds.tooltip": "Blocks this mod must never overwrite, in any mode, even with force_place. A rule's protected_blocks can add to this list but never remove entries from it.",
 
-  "boss_respawner.jade.boss": "Revives: %s",
-  "boss_respawner.jade.key_item": "Key item:",
+  "boss_respawner.jade.boss": "Revive: %s",
   "boss_respawner.jade.amount": "x%s",
+
+  "config.jade.plugin_boss_respawner.cage_contents": "Respawner Contents",
 
   "boss_respawner.message.respawn_failed": "The boss respawner at %s failed to summon the boss after several attempts and has reset."
 }

@@ -5,7 +5,7 @@
   "entity": "twilightforest:naga",
   "activation": {
     "item": "twilightforest:magic_map_focus",
-    "amount": 1,
+    "amount": 64,
     "consume": true
   },
   "placement": {

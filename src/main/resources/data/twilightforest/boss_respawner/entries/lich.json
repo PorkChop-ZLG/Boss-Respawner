@@ -5,7 +5,7 @@
   "entity": "twilightforest:lich",
   "activation": {
     "item": "twilightforest:magic_map_focus",
-    "amount": 1,
+    "amount": 100,
     "consume": true
   },
   "placement": {
