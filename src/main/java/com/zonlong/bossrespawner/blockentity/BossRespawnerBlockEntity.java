@@ -301,6 +301,23 @@ public class BossRespawnerBlockEntity extends BlockEntity {
     }
 
     /**
+     * Records <em>what</em> this cage revives and what it costs, independently of how it revives it.
+     *
+     * <p>Both spawn modes need this. Without it the cage has no identity: the Jade tooltip has no boss name
+     * and no key item to show, and {@code matchesKeyItem} can never match, so right-clicking does nothing
+     * at all. {@link #setSpawnerData} sets the same fields for the summon path, so calling this first is
+     * simply the shared half of the configuration.
+     */
+    public void setIdentity(String entityTypeId, String keyItemId, int keyAmount, boolean consumeKeyItem) {
+        this.entityTypeId = entityTypeId == null ? "" : entityTypeId;
+        this.keyItemId = keyItemId == null ? "" : keyItemId;
+        this.keyAmount = Math.max(1, keyAmount);
+        this.consumeKeyItem = consumeKeyItem;
+        invalidateCaches();
+        setChanged();
+    }
+
+    /**
      * Switches this cage to hand-off mode: stay lit for {@code delayTicks} so the opening animation plays,
      * then become {@code block} and write {@code nbt} to that block's block entity.
      */

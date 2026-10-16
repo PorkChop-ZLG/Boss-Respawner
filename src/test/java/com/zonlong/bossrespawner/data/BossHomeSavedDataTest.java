@@ -40,7 +40,7 @@ class BossHomeSavedDataTest {
     private static RespawnEntry entry(String entity, String placementBody) {
         JsonObject root = JsonParser.parseString("""
                 {
-                  "schema_version": 3,
+                  "schema_version": 4,
                   "entity": "%s",
                   "activation": { "item": "minecraft:echo_shard", "amount": 3, "consume": false },
                   "placement": %s,
@@ -64,8 +64,7 @@ class BossHomeSavedDataTest {
                     "horizontal_radius": 2,
                     "require_ground": false,
                     "avoid_fluids": true,
-                    "avoid_blocks": ["minecraft:bedrock"],
-                    "protected_blocks": ["minecraft:chest"]
+                    "avoid_blocks": ["minecraft:bedrock"]
                   }
                 }
                 """);
@@ -362,7 +361,9 @@ class BossHomeSavedDataTest {
         assertEquals(expected.requireGround(), actual.requireGround());
         assertEquals(expected.avoidFluids(), actual.avoidFluids());
         assertEquals(expected.avoidBlocks(), actual.avoidBlocks());
-        assertEquals(expected.protectedBlocks(), actual.protectedBlocks());
+        // place_delay_ticks is part of the rule too: losing it in the snapshot would make a deferred placement
+        // fire before the boss death animation (and its loot chest) has finished.
+        assertEquals(expected.placeDelayTicks(), actual.placeDelayTicks());
     }
 
     private static void assertSpawnEquals(RespawnEntry.SpawnRule expected, RespawnEntry.SpawnRule actual) {

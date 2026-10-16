@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "enabled": true,
   "priority": 0,
   "entity": "twilightforest:naga",
@@ -20,8 +20,8 @@
       "horizontal_radius": 4,
       "require_ground": true,
       "avoid_fluids": false,
-      "avoid_blocks": ["cataclysm:boss_respawner"],
-      "protected_blocks": [
+      "avoid_blocks": [
+        "cataclysm:boss_respawner",
         "twilightforest:canopy_chest",
         "twilightforest:canopy_trapped_chest",
         "twilightforest:dark_chest",

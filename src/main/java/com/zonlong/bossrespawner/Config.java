@@ -31,21 +31,6 @@ public final class Config {
             .translation("boss_respawner.configuration.general.highlightBossRespawnerRange")
             .defineInRange("general.highlightBossRespawnerRange", 32, 1, 256);
 
-    /**
-     * Hard safety floor: blocks this mod must never overwrite, regardless of {@code force_place}.
-     *
-     * <p>This is deliberately global rather than per-rule. "Do not destroy another mod's block" is a
-     * cross-cutting guarantee that must not depend on every datapack author remembering to declare it.
-     * A rule's own {@code protected_blocks} can only add to this list, never subtract from it.
-     */
-    public static final ModConfigSpec.ConfigValue<List<? extends String>> PROTECTED_BLOCK_IDS = BUILDER
-            .comment("Block IDs that this mod must never overwrite, in any placement mode, even when force_place is true.",
-                    "Rules can add more protection via their own protected_blocks list, but cannot remove entries listed here.",
-                    "Example: [\"cataclysm:boss_respawner\"]")
-            .translation("boss_respawner.configuration.compat.protectedBlockIds")
-            .defineListAllowEmpty("compat.protectedBlockIds", List.of("cataclysm:boss_respawner"),
-                    () -> "", obj -> obj instanceof String);
-
     public static final ModConfigSpec.BooleanValue DEBUG_INFO = BUILDER
             .comment("Debug logging. When true, prints debug information about Boss respawner placement and spawning to the log.",
                     "This setting lives in its own [debug] group.")

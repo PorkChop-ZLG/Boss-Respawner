@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Schema v3 parsing rules for {@link RespawnEntry}.
+ * Schema v4 parsing rules for {@link RespawnEntry}.
  *
  * <p>Covers the behaviours required by the implementation handoff: nested {@code placement.death} /
  * {@code placement.home} objects, no implicit {@code mode} default, mode-object presence checks,
@@ -22,6 +22,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Schema v3 also requires {@code spawn.mode} plus its mode object; a schema v2 flat {@code spawn} is
  * covered by {@link SchemaAdditionsTest}, so every rule built here carries a minimal valid {@code spawn}.
+ *
+ * <p>Schema v4 removed {@code protected_blocks} entirely: {@code avoid_blocks} is the only block list, and
+ * no field of {@link RespawnEntry.PlacementRule} can express an unoverwritable block any more. The tests
+ * below therefore pin the new contract - a leftover v3 {@code protected_blocks} key is parsed but has no
+ * effect at all, so a half-migrated rule cannot silently keep a protection floor that no longer exists.
  */
 class RespawnEntrySchemaTest {
 
@@ -36,7 +41,7 @@ class RespawnEntrySchemaTest {
     private static String entryWith(String placementBody) {
         return """
                 {
-                  "schema_version": 3,
+                  "schema_version": 4,
                   "entity": "minecraft:warden",
                   "activation": { "item": "minecraft:echo_shard" },
                   "placement": %s,
@@ -87,8 +92,7 @@ class RespawnEntrySchemaTest {
                     "horizontal_radius": 2,
                     "require_ground": false,
                     "avoid_fluids": true,
-                    "avoid_blocks": ["minecraft:bedrock"],
-                    "protected_blocks": ["minecraft:chest"]
+                    "avoid_blocks": ["minecraft:bedrock", "minecraft:chest"]
                   }
                 }
                 """));
@@ -103,8 +107,11 @@ class RespawnEntrySchemaTest {
         assertEquals(2, placement.horizontalRadius());
         assertFalse(placement.requireGround());
         assertTrue(placement.avoidFluids());
-        assertEquals(java.util.Set.of(ResourceLocation.parse("minecraft:bedrock")), placement.avoidBlocks());
-        assertEquals(java.util.Set.of(ResourceLocation.parse("minecraft:chest")), placement.protectedBlocks());
+        assertEquals(java.util.Set.of(
+                        ResourceLocation.parse("minecraft:bedrock"),
+                        ResourceLocation.parse("minecraft:chest")),
+                placement.avoidBlocks(),
+                "avoid_blocks is the only block list in v4, so every entry must survive here");
     }
 
     @Test
@@ -141,38 +148,58 @@ class RespawnEntrySchemaTest {
             assertTrue(placement.requireGround());
             assertFalse(placement.avoidFluids());
             assertTrue(placement.avoidBlocks().isEmpty());
-            assertTrue(placement.protectedBlocks().isEmpty());
         }
         assertEquals(RespawnEntry.PlacementMode.HOME, home.placement().mode());
         assertEquals(RespawnEntry.PlacementMode.DEATH, death.placement().mode());
     }
 
     @Test
-    @DisplayName("protected_blocks parses independently of avoid_blocks")
-    void protectedBlocksParseIndependently() {
+    @DisplayName("avoid_blocks parses on its own, and a leftover v3 protected_blocks key has no effect")
+    void avoidBlocksParseIndependently() {
+        // The v3 shape is kept in the file on purpose: a rule that only bumps schema_version and forgets to
+        // move its protected ids must not keep any protection. In v4 the key is simply never read.
         RespawnEntry entry = parseOrFail(entryWith("""
                 {
                   "mode": "home",
-                  "home": { "protected_blocks": ["cataclysm:boss_respawner", "minecraft:spawner"] }
+                  "home": {
+                    "avoid_blocks": ["cataclysm:boss_respawner", "minecraft:spawner"],
+                    "protected_blocks": ["minecraft:chest"]
+                  }
                 }
                 """));
 
         assertEquals(java.util.Set.of(
                         ResourceLocation.parse("cataclysm:boss_respawner"),
                         ResourceLocation.parse("minecraft:spawner")),
-                entry.placement().protectedBlocks());
-        assertTrue(entry.placement().avoidBlocks().isEmpty());
+                entry.placement().avoidBlocks(),
+                "avoid_blocks must be parsed exactly, independently of the other mode fields");
+        assertFalse(entry.placement().avoidBlocks().contains(ResourceLocation.parse("minecraft:chest")),
+                "a leftover v3 protected_blocks key must not leak into avoid_blocks either");
     }
 
     @Test
-    @DisplayName("block id lists are parsed eagerly, dropping malformed ids but keeping unregistered ones")
+    @DisplayName("PlacementRule cannot express an unoverwritable block any more")
+    void protectedBlocksAccessorIsGone() {
+        // Guards the deletion itself rather than a behaviour: if protectedBlocks() ever comes back, the
+        // search/write paths could start refusing placements again (the ABANDON failure mode that motivated
+        // v4), and this test must fail loudly before that ships.
+        java.util.List<String> accessors = java.util.Arrays.stream(RespawnEntry.PlacementRule.class.getMethods())
+                .map(java.lang.reflect.Method::getName)
+                .filter(name -> name.toLowerCase(java.util.Locale.ROOT).contains("protected"))
+                .sorted()
+                .toList();
+        assertTrue(accessors.isEmpty(),
+                "PlacementRule still exposes protected-block accessors: " + accessors);
+    }
+
+    @Test
+    @DisplayName("the avoid_blocks list is parsed eagerly, dropping malformed ids but keeping unregistered ones")
     void blockIdListsAreParsedDefensively() {
         RespawnEntry entry = parseOrFail(entryWith("""
                 {
                   "mode": "home",
                   "home": {
-                    "avoid_blocks": ["minecraft:bedrock", "###", "othermod:not_installed"],
-                    "protected_blocks": ["twilightforest:dark_chest"]
+                    "avoid_blocks": ["minecraft:bedrock", "###", "othermod:not_installed"]
                   }
                 }
                 """));
@@ -184,8 +211,6 @@ class RespawnEntrySchemaTest {
                         ResourceLocation.parse("othermod:not_installed")),
                 entry.placement().avoidBlocks(),
                 "malformed ids must be dropped, unregistered-but-valid ids must survive");
-        assertEquals(java.util.Set.of(ResourceLocation.parse("twilightforest:dark_chest")),
-                entry.placement().protectedBlocks());
     }
 
     // ---------------------------------------------------------------- rejections
@@ -251,25 +276,30 @@ class RespawnEntrySchemaTest {
                 { "mode": "summon", "summon": {} }
                 """;
 
-        // 3 is the only supported version: with the rest of the rule valid, it must parse.
-        assertTrue(parseVersioned("\"schema_version\": 3,", placement, spawn).isPresent(),
-                "schema_version 3 is the supported version and must parse");
+        // 4 is the only supported version: with the rest of the rule valid, it must parse.
+        assertTrue(parseVersioned("\"schema_version\": 4,", placement, spawn).isPresent(),
+                "schema_version 4 is the supported version and must parse");
 
         // v1 is no longer accepted.
         assertTrue(parseVersioned("\"schema_version\": 1,", placement, spawn).isEmpty(),
                 "schema v1 must be rejected");
 
         // v2 is the previous version and is rejected as well; its flat spawn layout is separate from this
-        // gate (see SchemaAdditionsTest), so this case declares v2 with an otherwise valid v3 body.
+        // gate (see SchemaAdditionsTest), so this case declares v2 with an otherwise valid v3/v4 body.
         assertTrue(parseVersioned("\"schema_version\": 2,", placement, spawn).isEmpty(),
                 "schema v2 is no longer supported and must be rejected");
+
+        // v3 became unsupported in v4: its protected_blocks field is gone, so a v3 rule must be migrated
+        // rather than silently accepted with the protection silently dropped.
+        assertTrue(parseVersioned("\"schema_version\": 3,", placement, spawn).isEmpty(),
+                "schema v3 must be rejected now that v4 removed protected_blocks");
 
         // missing schema_version is an error, not a default
         assertTrue(parseVersioned("", placement, spawn).isEmpty(),
                 "a missing schema_version must be rejected");
 
         // a future version is rejected too
-        assertTrue(parseVersioned("\"schema_version\": 4,", placement, spawn).isEmpty(),
+        assertTrue(parseVersioned("\"schema_version\": 5,", placement, spawn).isEmpty(),
                 "a future schema_version must be rejected");
     }
 
@@ -278,7 +308,7 @@ class RespawnEntrySchemaTest {
     void missingPlacementObjectIsRejected() {
         assertTrue(parse("""
                 {
-                  "schema_version": 3,
+                  "schema_version": 4,
                   "entity": "minecraft:warden",
                   "activation": { "item": "minecraft:echo_shard" },
                   "spawn": { "mode": "summon", "summon": {} }
@@ -291,7 +321,7 @@ class RespawnEntrySchemaTest {
     void mandatoryTopLevelFieldsAreEnforced() {
         assertTrue(parse("""
                 {
-                  "schema_version": 3,
+                  "schema_version": 4,
                   "activation": { "item": "minecraft:echo_shard" },
                   "placement": { "mode": "home", "home": {} },
                   "spawn": { "mode": "summon", "summon": {} }
@@ -300,7 +330,7 @@ class RespawnEntrySchemaTest {
 
         assertTrue(parse("""
                 {
-                  "schema_version": 3,
+                  "schema_version": 4,
                   "entity": "minecraft:warden",
                   "placement": { "mode": "home", "home": {} },
                   "spawn": { "mode": "summon", "summon": {} }
@@ -313,7 +343,7 @@ class RespawnEntrySchemaTest {
     void enabledAndEntityArrayBehaveAsBefore() {
         assertTrue(parse("""
                 {
-                  "schema_version": 3,
+                  "schema_version": 4,
                   "enabled": false,
                   "entity": "minecraft:warden",
                   "activation": { "item": "minecraft:echo_shard" },
@@ -324,7 +354,7 @@ class RespawnEntrySchemaTest {
 
         RespawnEntry entry = parseOrFail("""
                 {
-                  "schema_version": 3,
+                  "schema_version": 4,
                   "entity": ["minecraft:warden", "minecraft:ravager"],
                   "activation": { "item": "minecraft:echo_shard" },
                   "placement": { "mode": "home", "home": {} },

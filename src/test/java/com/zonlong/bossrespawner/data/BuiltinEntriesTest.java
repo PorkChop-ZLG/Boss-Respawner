@@ -75,7 +75,7 @@ class BuiltinEntriesTest {
     }
 
     @Test
-    @DisplayName("all built-in entries are present and parse under schema v3")
+    @DisplayName("all built-in entries are present and parse under schema v4")
     void allBuiltinEntriesParse() throws IOException {
         List<Loaded> loaded = loadAll();
         assertEquals(EXPECTED_ENTRY_COUNT, loaded.size(),
@@ -84,11 +84,11 @@ class BuiltinEntriesTest {
     }
 
     @Test
-    @DisplayName("every built-in entry is schema_version 3 and uses placement.mode home")
+    @DisplayName("every built-in entry is schema_version 4 and uses placement.mode home")
     void schemaAndModeAreUniform() throws IOException {
         for (Loaded loaded : loadAll()) {
             JsonObject json = loaded.json();
-            assertEquals(3, json.get("schema_version").getAsInt(), loaded.name() + ": schema_version");
+            assertEquals(4, json.get("schema_version").getAsInt(), loaded.name() + ": schema_version");
             assertEquals("home", json.getAsJsonObject("placement").get("mode").getAsString(),
                     loaded.name() + ": placement.mode");
             assertTrue(json.getAsJsonObject("placement").has("home"),
@@ -99,10 +99,26 @@ class BuiltinEntriesTest {
     }
 
     @Test
+    @DisplayName("no built-in entry still carries the removed protected_blocks field")
+    void protectedBlocksIsGoneEverywhere() throws IOException {
+        // v4 deleted the field (and the global compat.protectedBlockIds list behind it), so a leftover key
+        // would be dead weight that reads like a live protection floor. This is the migration's own check:
+        // every entry mentions the key nowhere, in any placement mode object.
+        for (Loaded loaded : loadAll()) {
+            String text = Files.readString(loaded.file(), StandardCharsets.UTF_8);
+            assertFalse(text.contains("protected_blocks"),
+                    loaded.name() + ": protected_blocks was removed in schema v4; its block ids belong in "
+                            + "avoid_blocks now");
+            assertFalse(text.contains("protectedBlockIds"),
+                    loaded.name() + ": the global compat.protectedBlockIds list no longer exists");
+        }
+    }
+
+    @Test
     @DisplayName("the schema v1 flat placement layout is gone")
     void legacyPlacementKeysAreGone() throws IOException {
         List<String> legacyKeys = List.of("offset", "search_down", "search_up", "horizontal_radius",
-                "require_ground", "avoid_fluids", "avoid_blocks", "protected_blocks");
+                "require_ground", "avoid_fluids", "avoid_blocks");
         for (Loaded loaded : loadAll()) {
             JsonObject placement = loaded.json().getAsJsonObject("placement");
             for (String key : legacyKeys) {
@@ -130,7 +146,7 @@ class BuiltinEntriesTest {
             JsonObject home = json.getAsJsonObject("placement").getAsJsonObject("home");
             for (String key : List.of("offset", "force_place", "search_failure_fallback", "search_down",
                     "search_up", "horizontal_radius", "require_ground", "avoid_fluids",
-                    "avoid_blocks", "protected_blocks", "place_delay_ticks")) {
+                    "avoid_blocks", "place_delay_ticks")) {
                 assertTrue(home.has(key), name + ": placement.home." + key + " must be explicit");
             }
 
@@ -167,24 +183,25 @@ class BuiltinEntriesTest {
             assertFalse(home.get("force_place").getAsBoolean(), loaded.name() + ": force_place");
             assertTrue(home.get("search_failure_fallback").getAsBoolean(),
                     loaded.name() + ": search_failure_fallback");
-            assertFalse(stringArray(home, "protected_blocks").contains("cataclysm:boss_respawner"),
-                    loaded.name() + ": Cataclysm protection comes from the global protectedBlockIds list, "
-                            + "so a rule must not duplicate it in protected_blocks");
-            assertFalse(stringArray(home, "avoid_blocks").isEmpty(),
-                    loaded.name() + ": the previous global avoidance list must be migrated explicitly");
+            // The old global foreignCageBlockIds avoidance was migrated into every rule explicitly, and in v4
+            // avoid_blocks is the ONLY block list there is, so an empty one would silently drop the avoidance
+            // of another mod's respawner block.
+            assertTrue(stringArray(home, "avoid_blocks").contains("cataclysm:boss_respawner"),
+                    loaded.name() + ": the migrated avoidance of cataclysm:boss_respawner must survive in "
+                            + "avoid_blocks, which is now the only block list");
         }
     }
 
     @Test
-    @DisplayName("every Twilight Forest entry protects that mod's chest blocks")
-    void twilightForestEntriesProtectChests() throws IOException {
+    @DisplayName("every Twilight Forest entry avoids that mod's chest blocks")
+    void twilightForestEntriesAvoidChests() throws IOException {
         // Twilight Forest delivers boss loot through chests (its Dark Tower boss chest even holds the
-        // Ur-Ghast trophy) and fills boss arenas with chests, so a respawn cage must never overwrite one.
+        // Ur-Ghast trophy) and fills boss arenas with chests, so a respawn cage must not land on one.
         //
-        // The chests live in protected_blocks only. The code makes protected_blocks also filter the
-        // placement SEARCH (PlacementResolver), so a candidate sitting on a chest is skipped and relocated
-        // rather than selected and then refused. Duplicating the list into avoid_blocks is therefore
-        // unnecessary - see PlacementResolverTest for the membership semantics that make this work.
+        // In v3 these 17 ids lived in protected_blocks, which also filtered the placement SEARCH. v4 deleted
+        // that field, so the ids were migrated into avoid_blocks - the one remaining list, which the first
+        // search pass honours. The worst case is now "the cage ends up on top of a chest" instead of the cage
+        // not appearing at all; see PlacementResolver for the two-pass search that guarantees it.
         List<String> twilightForestChests = List.of(
                 "twilightforest:canopy_chest", "twilightforest:canopy_trapped_chest",
                 "twilightforest:dark_chest", "twilightforest:dark_trapped_chest",
@@ -204,21 +221,40 @@ class BuiltinEntriesTest {
             checked++;
             JsonObject home = loaded.json().getAsJsonObject("placement").getAsJsonObject("home");
 
-            List<String> missingFromProtected = twilightForestChests.stream()
-                    .filter(id -> !stringArray(home, "protected_blocks").contains(id)).toList();
-            assertTrue(missingFromProtected.isEmpty(),
-                    loaded.name() + ": protected_blocks is missing " + missingFromProtected);
-
-            // avoid_blocks stays a plain search-preference list; the chests must NOT be duplicated there.
-            List<String> chestsInAvoid = stringArray(home, "avoid_blocks").stream()
-                    .filter(twilightForestChests::contains).toList();
-            assertTrue(chestsInAvoid.isEmpty(),
-                    loaded.name() + ": chests must not be duplicated into avoid_blocks, got " + chestsInAvoid);
+            List<String> missingFromAvoid = twilightForestChests.stream()
+                    .filter(id -> !stringArray(home, "avoid_blocks").contains(id)).toList();
+            assertTrue(missingFromAvoid.isEmpty(),
+                    loaded.name() + ": avoid_blocks is missing " + missingFromAvoid);
 
             assertTrue(stringArray(home, "avoid_blocks").contains("cataclysm:boss_respawner"),
                     loaded.name() + ": the migrated Cataclysm avoidance entry must survive");
         }
         assertEquals(9, checked, "expected all nine Twilight Forest entries to be checked");
+    }
+
+    @Test
+    @DisplayName("the migrated avoid_blocks lists are exact: 18 ids in Twilight Forest, 1 everywhere else")
+    void avoidListsAreExact() throws IOException {
+        // The migration merged the 17 Twilight Forest chest ids into a list that already held exactly one id
+        // (cataclysm:boss_respawner), so all nine of its entries must hold 18 - no more (a duplicated merge)
+        // and no fewer (a silently dropped list). Every other mod keeps the single migrated id. Pinning the
+        // sizes catches both a bulk edit that flattens the lists and one that only half-applied them.
+        int twilightForest = 0;
+        for (Loaded loaded : loadAll()) {
+            JsonObject home = loaded.json().getAsJsonObject("placement").getAsJsonObject("home");
+            int size = stringArray(home, "avoid_blocks").size();
+            if (loaded.file().toString().contains("twilightforest")) {
+                twilightForest++;
+                assertEquals(18, size,
+                        loaded.name() + ": 17 Twilight Forest chest ids plus cataclysm:boss_respawner");
+            } else {
+                assertEquals(1, size,
+                        loaded.name() + ": only the migrated cataclysm:boss_respawner avoidance is expected");
+                assertEquals("cataclysm:boss_respawner", stringArray(home, "avoid_blocks").get(0),
+                        loaded.name() + ": the single avoided id must be the Cataclysm respawner block");
+            }
+        }
+        assertEquals(9, twilightForest, "expected all nine Twilight Forest entries");
     }
 
     /** Reads a JSON string array into a list; missing arrays yield an empty list. */
@@ -329,12 +365,6 @@ class BuiltinEntriesTest {
                 expectedAvoid.add(ResourceLocation.parse(value));
             }
             assertEquals(expectedAvoid, placement.avoidBlocks(), name + ": avoid_blocks");
-
-            Set<ResourceLocation> expectedProtected = new HashSet<>();
-            for (JsonElement element : home.getAsJsonArray("protected_blocks")) {
-                expectedProtected.add(ResourceLocation.parse(element.getAsString()));
-            }
-            assertEquals(expectedProtected, placement.protectedBlocks(), name + ": protected_blocks");
 
             JsonObject duplicate = loaded.json().getAsJsonObject("duplicate");
             assertEquals(duplicate.get("mode").getAsString(), loaded.entry().duplicate().mode(), name);

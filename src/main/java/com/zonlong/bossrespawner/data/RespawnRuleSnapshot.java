@@ -91,7 +91,6 @@ public record RespawnRuleSnapshot(
         tag.putBoolean("RequireGround", rule.requireGround());
         tag.putBoolean("AvoidFluids", rule.avoidFluids());
         BossHomeNbt.putStringList(tag, "AvoidBlocks", toIdStrings(rule.avoidBlocks()));
-        BossHomeNbt.putStringList(tag, "ProtectedBlocks", toIdStrings(rule.protectedBlocks()));
         tag.putInt("PlaceDelayTicks", rule.placeDelayTicks());
         return tag;
     }
@@ -114,7 +113,6 @@ public record RespawnRuleSnapshot(
                 tag.getBoolean("RequireGround"),
                 tag.getBoolean("AvoidFluids"),
                 parseIds(BossHomeNbt.getStringList(tag, "AvoidBlocks")),
-                parseIds(BossHomeNbt.getStringList(tag, "ProtectedBlocks")),
                 // Absent in snapshots written before schema v3, where no delay existed.
                 tag.contains("PlaceDelayTicks", Tag.TAG_INT) ? tag.getInt("PlaceDelayTicks") : 0);
     }

@@ -42,21 +42,25 @@ public record RespawnEntry(
         DuplicateRule duplicate) {
 
     /** The only supported {@code schema_version}. Any other value makes the entry be skipped. */
-    public static final int SCHEMA_VERSION = 3;
+    public static final int SCHEMA_VERSION = 4;
 
     /**
      * Explains a schema version mismatch in terms of the layout that was actually used, so the fix is
      * obvious instead of looking like a typo.
      */
     private static String layoutHint(JsonObject root, int version) {
+        if (version == 3) {
+            return " - schema v3 still had placement.<mode>.protected_blocks; v4 removed it, and "
+                    + "avoid_blocks is now the only block list. See README for the v3 -> v4 mapping";
+        }
         if (version == 2) {
-            return " - schema v2 put the spawn fields directly under \"spawn\"; v3 requires \"spawn.mode\" "
+            return " - schema v2 put the spawn fields directly under \"spawn\"; v3+ requires \"spawn.mode\" "
                     + "and nests them under \"spawn.summon\" or \"spawn.transform\". See README for the "
-                    + "v2 -> v3 mapping";
+                    + "v2 -> v4 mapping";
         }
         if (version == 1) {
             return " - schema v1 put the placement fields directly under \"placement\"; see README for the "
-                    + "v1 -> v3 mapping";
+                    + "v1 -> v4 mapping";
         }
         return "";
     }
@@ -252,8 +256,7 @@ public record RespawnEntry(
     public record PlacementRule(PlacementMode mode, int[] offset, boolean forcePlace,
                                 boolean searchFailureFallback, int searchDown, int searchUp,
                                 int horizontalRadius, boolean requireGround, boolean avoidFluids,
-                                Set<ResourceLocation> avoidBlocks, Set<ResourceLocation> protectedBlocks,
-                                int placeDelayTicks) {
+                                Set<ResourceLocation> avoidBlocks, int placeDelayTicks) {
 
         /**
          * Parses {@code placement} and resolves the mode-specific object.
@@ -314,7 +317,6 @@ public record RespawnEntry(
                     getBoolean(obj, "require_ground", true),
                     getBoolean(obj, "avoid_fluids", false),
                     parseBlockIds(entryId, obj, "avoid_blocks"),
-                    parseBlockIds(entryId, obj, "protected_blocks"),
                     Math.max(0, getInt(obj, "place_delay_ticks", 0))));
         }
 

@@ -189,16 +189,11 @@ public final class RespawnCagePlacer {
 
         RespawnEntry.PlacementRule placement = request.rules().placement();
 
-        // Resolved once per placement: the global floor plus whatever this rule adds. Both the search and
-        // the write path use this same set, so the search can never propose a position the write refuses.
-        Set<ResourceLocation> protectedBlocks = effectiveProtectedBlocks(placement);
-
         BlockPos chosen;
         if (placement.forcePlace()) {
             chosen = request.base();
         } else {
-            Optional<BlockPos> found =
-                    PlacementResolver.findPlacementPos(level, request.base(), placement, protectedBlocks);
+            Optional<BlockPos> found = PlacementResolver.findPlacementPos(level, request.base(), placement);
             if (found.isPresent()) {
                 chosen = found.get();
             } else if (placement.searchFailureFallback()) {
@@ -214,13 +209,13 @@ public final class RespawnCagePlacer {
             }
         }
 
-        if (isProtected(level, chosen, protectedBlocks)) {
-            UniversalBossRespawner.LOGGER.warn(
-                    "Refusing to place the respawn cage for {} at {}: the block there (or below it) is in "
-                            + "protected_blocks or the global protectedBlockIds list. The existing block is "
-                            + "left untouched.",
-                    request.entityTypeId(), chosen);
-            return Outcome.ABANDONED;
+        // Deliberately no protection check here. force_place and the fallback mean "place the cage no matter
+        // what", so they overwrite whatever occupies the position - a loot chest, another mod's boss spawner,
+        // even bedrock - and the replaced block's contents are gone rather than dropped. avoid_blocks is the
+        // only way to steer the search away from a block, and both of these paths skip the search.
+        if (placement.forcePlace() || chosen.equals(request.base())) {
+            DebugLog.info("Writing respawn cage for {} at {} without protection checks", request.entityTypeId(),
+                    chosen);
         }
 
         if (!hasExistingCageConflict(level, chosen, request)) {
@@ -280,57 +275,6 @@ public final class RespawnCagePlacer {
     }
 
     /**
-     * The unbreakable protected-block floor: the global {@code compat.protectedBlockIds} list plus the
-     * rule's own {@code protected_blocks}. Rules can only add to the global floor, never remove from it.
-     *
-     * <p>Returns the parsed id sets directly (no copy) whenever one side is empty, so the common cases
-     * allocate nothing.
-     */
-    private static Set<ResourceLocation> effectiveProtectedBlocks(RespawnEntry.PlacementRule placement) {
-        Set<ResourceLocation> configured = parseConfiguredProtectedBlocks();
-        Set<ResourceLocation> fromRule = placement.protectedBlocks();
-        if (fromRule.isEmpty() || configured.isEmpty()) {
-            return fromRule.isEmpty() ? configured : fromRule;
-        }
-        Set<ResourceLocation> union = new HashSet<>(configured);
-        union.addAll(fromRule);
-        return union;
-    }
-
-    /** Parses the global config list. Called once per placement attempt, not per search candidate. */
-    private static Set<ResourceLocation> parseConfiguredProtectedBlocks() {
-        List<? extends String> raw = Config.PROTECTED_BLOCK_IDS.get();
-        if (raw.isEmpty()) {
-            return Set.of();
-        }
-        Set<ResourceLocation> ids = new HashSet<>(raw.size());
-        for (String value : raw) {
-            ResourceLocation id = ResourceLocation.tryParse(value);
-            if (id != null) {
-                ids.add(id);
-            }
-        }
-        return ids;
-    }
-
-    /**
-     * The unbreakable protected-block floor, applied to <em>every</em> write path including forced
-     * placement; {@code avoid_blocks} by contrast is a search preference only.
-     */
-    private static boolean isProtected(ServerLevel level, BlockPos pos, Set<ResourceLocation> protectedBlocks) {
-        if (protectedBlocks.isEmpty()) {
-            return false;
-        }
-        // Same coverage as the search check: the target block and the block under it.
-        return PlacementResolver.isListed(blockIdAt(level, pos), protectedBlocks)
-                || PlacementResolver.isListed(blockIdAt(level, pos.below()), protectedBlocks);
-    }
-
-    private static ResourceLocation blockIdAt(ServerLevel level, BlockPos pos) {
-        return BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock());
-    }
-
-    /**
      * Applies {@code duplicate.mode} at the chosen position.
      *
      * @return {@code false} when {@code keep_existing} found a cage and the placement should stop
@@ -376,6 +320,12 @@ public final class RespawnCagePlacer {
 
         RespawnEntry.ActivationRule activation = request.rules().activation();
         RespawnEntry.SpawnRule spawn = request.rules().spawn();
+
+        // Identity first, and for both modes: the boss it revives and the key it costs. The transform path
+        // needs these as much as the summon path does - without them Jade has nothing to show and
+        // matchesKeyItem can never succeed, so the cage would be inert.
+        be.setIdentity(request.entityTypeId(), activation.item().toString(),
+                activation.amount(), activation.consume());
 
         if (spawn.mode() == RespawnEntry.SpawnMode.TRANSFORM && spawn.transform() != null) {
             // Hand-off mode: the cage becomes another block once its opening animation has played, instead
