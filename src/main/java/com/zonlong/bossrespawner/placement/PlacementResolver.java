@@ -1,6 +1,5 @@
 package com.zonlong.bossrespawner.placement;
 
-import com.zonlong.bossrespawner.Config;
 import com.zonlong.bossrespawner.DebugLog;
 import com.zonlong.bossrespawner.data.RespawnEntry;
 
@@ -9,34 +8,38 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Finds a safe position for a respawn cage by searching around a caller-supplied base position.
+ *
+ * <p>The base is chosen by {@link RespawnCagePlacer}: the death position in {@code death} mode, the
+ * registered home in {@code home} mode. Search order is unchanged from earlier versions: downward,
+ * then upward, then a horizontal ring.
+ *
+ * <p>Only {@code avoid_blocks} participates here (it is a search <em>preference</em>). The
+ * {@code protected_blocks} floor is enforced on the write path instead, because a forced placement
+ * bypasses this search entirely.
+ *
+ * <p>Candidates in unloaded chunks are rejected without loading them: {@link ServerLevel#isLoaded} is a
+ * non-loading query, and a loading one here would stall the server thread during a death event.
+ */
 public final class PlacementResolver {
+
     private PlacementResolver() {
     }
 
-    public static Optional<BlockPos> findPlacementPos(ServerLevel level, LivingEntity entity,
+    public static Optional<BlockPos> findPlacementPos(ServerLevel level, BlockPos base,
                                                       RespawnEntry.PlacementRule placement) {
-        // Design decision: this mod only places cages at/near the entity's death position.
-        BlockPos base = entity.blockPosition()
-                .offset(placement.offset()[0], placement.offset()[1], placement.offset()[2]);
-
-        DebugLog.info("Placement search started: base={} offset={} searchDown={} searchUp={} horizontalRadius={} requireGround={} avoidFluids={}",
-                base, Arrays.toString(placement.offset()), placement.searchDown(), placement.searchUp(),
+        DebugLog.info("Placement search started: base={} offsetApplied=true searchDown={} searchUp={} horizontalRadius={} requireGround={} avoidFluids={}",
+                base, placement.searchDown(), placement.searchUp(),
                 placement.horizontalRadius(), placement.requireGround(), placement.avoidFluids());
 
-        List<String> avoidBlocks = new ArrayList<>(placement.avoidBlocks());
-        for (String foreign : Config.FOREIGN_CAGE_BLOCK_IDS.get()) {
-            if (!avoidBlocks.contains(foreign)) {
-                avoidBlocks.add(foreign);
-            }
-        }
+        List<String> avoidBlocks = placement.avoidBlocks();
         DebugLog.info("Placement avoid blocks: {}", avoidBlocks);
 
         // Downward search first, matching Cataclysm's general behaviour.
@@ -57,7 +60,7 @@ public final class PlacementResolver {
             }
         }
 
-        // Horizontal spiral around the original Y level.
+        // Horizontal rings around the base Y level.
         int radius = placement.horizontalRadius();
         for (int r = 1; r <= radius; r++) {
             for (int dx = -r; dx <= r; dx++) {
@@ -88,6 +91,8 @@ public final class PlacementResolver {
         }
 
         BlockState state = level.getBlockState(pos);
+        // Air or a replaceable block only. This also excludes an existing respawn cage of this mod:
+        // its block is neither air nor replaceable, so the search keeps looking for another candidate.
         if (!state.isAir() && !state.canBeReplaced()) {
             if (DebugLog.isEnabled()) {
                 DebugLog.info("Placement candidate rejected (not air/replaceable): {} state={}", pos, state);
@@ -113,7 +118,7 @@ public final class PlacementResolver {
 
         if (isAvoided(state, avoidBlocks) || isAvoided(level.getBlockState(pos.below()), avoidBlocks)) {
             if (DebugLog.isEnabled()) {
-                DebugLog.info("Placement candidate rejected (avoided block): {}", pos);
+                DebugLog.info("Placement candidate rejected (avoided block): {} avoid={}", pos, Arrays.toString(avoidBlocks.toArray()));
             }
             return false;
         }

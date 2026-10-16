@@ -69,9 +69,11 @@ public final class LivingDeathHandler {
             DebugLog.info("Death conditions met; attempting to place respawn cage for entityId={} rule={}", entityId, entry.id());
         }
         try {
-            boolean placed = RespawnCagePlacer.tryPlace(serverLevel, entity, entry, entityId.toString());
+            RespawnCagePlacer.Outcome outcome =
+                    RespawnCagePlacer.tryPlace(serverLevel, entity, entry, entityId.toString());
             if (DebugLog.isEnabled()) {
-                DebugLog.info("Placement attempt finished: placed={} entityId={} rule={}", placed, entityId, entry.id());
+                DebugLog.info("Placement attempt finished: outcome={} entityId={} rule={}",
+                        outcome, entityId, entry.id());
             }
         } catch (Exception e) {
             UniversalBossRespawner.LOGGER.warn("Failed to place {} respawn cage", entityId, e);

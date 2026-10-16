@@ -11,6 +11,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * One parsed {@code boss_respawner} JSON rule (schema v2).
+ *
+ * <pre>
+ * data/&lt;namespace&gt;/boss_respawner/entries/&lt;any-name&gt;.json
+ * </pre>
+ *
+ * <p>Schema v2 requires {@code schema_version}, {@code entity}, {@code activation.item},
+ * {@code placement.mode} and the mode-specific object ({@code placement.death} or
+ * {@code placement.home}) to be present explicitly. Everything else uses code defaults.
+ *
+ * <p>Schema v1 entries (flat {@code placement} without {@code mode}) are rejected rather than
+ * silently reinterpreted; see {@link PlacementRule#fromJson}.
+ */
 public record RespawnEntry(
         ResourceLocation id,
         boolean enabled,
@@ -22,6 +36,17 @@ public record RespawnEntry(
         SpawnRule spawn,
         DuplicateRule duplicate) {
 
+    /** The only supported {@code schema_version}. Any other value makes the entry be skipped. */
+    public static final int SCHEMA_VERSION = 2;
+
+    /** Selects which position the respawn cage is anchored to. */
+    public enum PlacementMode {
+        /** Anchor to the position where the entity died. */
+        DEATH,
+        /** Anchor to the registered home position stored in {@code BossHomeSavedData}. */
+        HOME
+    }
+
     public static Optional<RespawnEntry> fromJson(ResourceLocation id, JsonObject root) {
         try {
             boolean enabled = getBoolean(root, "enabled", true);
@@ -29,40 +54,49 @@ public record RespawnEntry(
                 return Optional.empty();
             }
 
-            int schemaVersion = getInt(root, "schema_version", 1);
-            if (schemaVersion != 1) {
-                UniversalBossRespawner.LOGGER.warn("Respawn entry {} uses unsupported schema_version {} (expected 1), skipping",
-                        id, schemaVersion);
+            // schema_version must be present and numeric; a missing value is an error, not a default.
+            JsonElement schemaElement = root.get("schema_version");
+            if (schemaElement == null || !schemaElement.isJsonPrimitive()
+                    || !schemaElement.getAsJsonPrimitive().isNumber()) {
+                UniversalBossRespawner.LOGGER.warn(
+                        "Respawn entry {} is missing a numeric schema_version (expected {}), skipping",
+                        id, SCHEMA_VERSION);
+                return Optional.empty();
+            }
+            int schemaVersion = schemaElement.getAsInt();
+            if (schemaVersion != SCHEMA_VERSION) {
+                UniversalBossRespawner.LOGGER.warn(
+                        "Respawn entry {} uses unsupported schema_version {} (expected {}), skipping",
+                        id, schemaVersion, SCHEMA_VERSION);
                 return Optional.empty();
             }
 
             int priority = getInt(root, "priority", 0);
+
             List<ResourceLocation> entities = parseEntities(root.get("entity"));
             if (entities.isEmpty()) {
                 UniversalBossRespawner.LOGGER.warn("Respawn entry {} has no valid entity", id);
                 return Optional.empty();
             }
 
-            JsonObject activationObj = getObject(root, "activation");
-            JsonObject placementObj = getObject(root, "placement");
-            JsonObject deathObj = getObject(root, "death");
-            JsonObject spawnObj = getObject(root, "spawn");
-            JsonObject duplicateObj = getObject(root, "duplicate");
-
-            ActivationRule activation = ActivationRule.fromJson(activationObj);
+            ActivationRule activation = ActivationRule.fromJson(getObject(root, "activation"));
             if (activation.item() == null) {
                 UniversalBossRespawner.LOGGER.warn("Respawn entry {} has no activation.item", id);
                 return Optional.empty();
             }
 
-            PlacementRule placement = PlacementRule.fromJson(placementObj);
-            DeathRule death = DeathRule.fromJson(deathObj);
-            SpawnRule spawn = SpawnRule.fromJson(spawnObj);
-            DuplicateRule duplicate = DuplicateRule.fromJson(duplicateObj);
+            Optional<PlacementRule> placement = PlacementRule.fromJson(id, getObject(root, "placement"));
+            if (placement.isEmpty()) {
+                return Optional.empty();
+            }
+
+            DeathRule death = DeathRule.fromJson(getObject(root, "death"));
+            SpawnRule spawn = SpawnRule.fromJson(getObject(root, "spawn"));
+            DuplicateRule duplicate = DuplicateRule.fromJson(getObject(root, "duplicate"));
 
             return Optional.of(new RespawnEntry(
                     id, true, priority, List.copyOf(entities), activation,
-                    placement, death, spawn, duplicate));
+                    placement.get(), death, spawn, duplicate));
         } catch (Exception e) {
             UniversalBossRespawner.LOGGER.warn("Failed to parse respawn entry {}: {}", id, e.toString());
             return Optional.empty();
@@ -183,19 +217,93 @@ public record RespawnEntry(
         }
     }
 
-    public record PlacementRule(int[] offset, int searchDown, int searchUp,
+    /**
+     * Resolved placement settings for the selected {@link PlacementMode}.
+     *
+     * <p>The nested JSON layout ({@code placement.death} / {@code placement.home}) is flattened here:
+     * the selected mode's object supplies every field below. Both mode objects share the same field set
+     * and the same defaults.
+     */
+    public record PlacementRule(PlacementMode mode, int[] offset, boolean forcePlace,
+                                boolean searchFailureFallback, int searchDown, int searchUp,
                                 int horizontalRadius, boolean requireGround, boolean avoidFluids,
-                                List<String> avoidBlocks) {
-        static PlacementRule fromJson(JsonObject obj) {
-            int[] offset = getIntArray(obj, "offset", new int[]{0, 0, 0});
-            int searchDown = Math.max(0, getInt(obj, "search_down", 32));
-            int searchUp = Math.max(0, getInt(obj, "search_up", 16));
-            int horizontalRadius = Math.max(0, getInt(obj, "horizontal_radius", 4));
-            boolean requireGround = getBoolean(obj, "require_ground", true);
-            boolean avoidFluids = getBoolean(obj, "avoid_fluids", false);
-            List<String> avoidBlocks = getStringList(obj, "avoid_blocks");
-            return new PlacementRule(offset, searchDown, searchUp, horizontalRadius,
-                    requireGround, avoidFluids, avoidBlocks);
+                                List<String> avoidBlocks, List<String> protectedBlocks) {
+
+        /**
+         * Parses {@code placement} and resolves the mode-specific object.
+         *
+         * @return empty (with a {@code warn}) when {@code placement.mode} is missing, unknown, or the
+         *         corresponding mode object is absent. A schema v1 flat layout is reported distinctly so
+         *         that the cause is obvious rather than being mistaken for a typo.
+         */
+        static Optional<PlacementRule> fromJson(ResourceLocation entryId, JsonObject placementObj) {
+            String modeName = getString(placementObj, "mode", "");
+            if (modeName.isBlank()) {
+                if (looksLikeSchemaV1Placement(placementObj)) {
+                    UniversalBossRespawner.LOGGER.warn(
+                            "Respawn entry {} uses the schema v1 flat placement layout. Schema v1 is no "
+                                    + "longer supported; add \"mode\" and move the placement fields into "
+                                    + "\"death\" or \"home\". See README for the v1 -> v2 mapping.",
+                            entryId);
+                } else {
+                    UniversalBossRespawner.LOGGER.warn(
+                            "Respawn entry {} is missing the required placement.mode "
+                                    + "(expected \"death\" or \"home\"), skipping",
+                            entryId);
+                }
+                return Optional.empty();
+            }
+
+            PlacementMode mode = switch (modeName) {
+                case "death" -> PlacementMode.DEATH;
+                case "home" -> PlacementMode.HOME;
+                default -> null;
+            };
+            if (mode == null) {
+                UniversalBossRespawner.LOGGER.warn(
+                        "Respawn entry {} has invalid placement.mode \"{}\" "
+                                + "(expected \"death\" or \"home\"), skipping",
+                        entryId, modeName);
+                return Optional.empty();
+            }
+
+            String modeKey = mode == PlacementMode.DEATH ? "death" : "home";
+            JsonElement modeElement = placementObj.get(modeKey);
+            if (modeElement == null || !modeElement.isJsonObject()) {
+                UniversalBossRespawner.LOGGER.warn(
+                        "Respawn entry {} selects placement.mode \"{}\" but has no placement.{} object, skipping",
+                        entryId, modeName, modeKey);
+                return Optional.empty();
+            }
+
+            JsonObject obj = modeElement.getAsJsonObject();
+            return Optional.of(new PlacementRule(
+                    mode,
+                    getIntArray(obj, "offset", new int[]{0, 0, 0}),
+                    getBoolean(obj, "force_place", false),
+                    getBoolean(obj, "search_failure_fallback", true),
+                    Math.max(0, getInt(obj, "search_down", 32)),
+                    Math.max(0, getInt(obj, "search_up", 16)),
+                    Math.max(0, getInt(obj, "horizontal_radius", 4)),
+                    getBoolean(obj, "require_ground", true),
+                    getBoolean(obj, "avoid_fluids", false),
+                    List.copyOf(getStringList(obj, "avoid_blocks")),
+                    List.copyOf(getStringList(obj, "protected_blocks"))));
+        }
+
+        /**
+         * Detects the schema v1 flat placement layout so the rejection message can name the real cause.
+         * Schema v1 put these keys directly under {@code placement} and had no {@code mode}.
+         */
+        private static boolean looksLikeSchemaV1Placement(JsonObject placementObj) {
+            for (String legacyKey : new String[]{
+                    "offset", "search_down", "search_up", "horizontal_radius",
+                    "require_ground", "avoid_fluids", "avoid_blocks"}) {
+                if (placementObj.has(legacyKey)) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 

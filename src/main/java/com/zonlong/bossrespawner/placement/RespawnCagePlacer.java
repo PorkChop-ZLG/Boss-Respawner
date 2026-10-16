@@ -4,14 +4,23 @@ import com.zonlong.bossrespawner.Config;
 import com.zonlong.bossrespawner.DebugLog;
 import com.zonlong.bossrespawner.UniversalBossRespawner;
 import com.zonlong.bossrespawner.blockentity.BossRespawnerBlockEntity;
+import com.zonlong.bossrespawner.data.BossHomeSavedData;
+import com.zonlong.bossrespawner.data.HomeRecord;
+import com.zonlong.bossrespawner.data.PendingPlacementTask;
 import com.zonlong.bossrespawner.data.RespawnEntry;
+import com.zonlong.bossrespawner.data.RespawnRuleSnapshot;
 import com.zonlong.bossrespawner.init.ModBlocks;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.TagParser;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -19,58 +28,279 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
+/**
+ * Anchors and writes respawn cages, and owns the deferred-placement pipeline.
+ *
+ * <p>Three outcomes are possible for a death:
+ * <ul>
+ *   <li>{@link Outcome#PLACED} — the cage was written;</li>
+ *   <li>{@link Outcome#DEFERRED} — the target chunk was not loaded, so a persistent task was queued and
+ *       the world was left untouched;</li>
+ *   <li>{@link Outcome#ABANDONED} — a permanent condition prevents placement (unknown home, unavailable
+ *       dimension, protected block, disabled fallback), so no task is kept.</li>
+ * </ul>
+ *
+ * <p>The target <em>dimension</em> is resolved before the chunk check, because an unavailable dimension
+ * and an unloaded chunk need opposite handling: the first must fail immediately (otherwise the task could
+ * never complete and, having no expiry, would leak forever), the second must be deferred.
+ */
 public final class RespawnCagePlacer {
+
+    /** Result of a placement attempt. */
+    public enum Outcome {
+        /** The cage exists. */
+        PLACED,
+        /** Nothing was written; a persistent task will retry once the target chunk is loaded. */
+        DEFERRED,
+        /** Nothing was written and nothing will be retried. */
+        ABANDONED
+    }
+
     private RespawnCagePlacer() {
     }
 
-    public static boolean tryPlace(ServerLevel level, LivingEntity entity, RespawnEntry entry,
-                                   String actualEntityId) {
+    /**
+     * Death entry point: resolves the anchor mode, then runs the placement pipeline.
+     *
+     * @param deathLevel   the level the entity died in (not necessarily the target level)
+     * @param entity       the dying entity
+     * @param entry        the matched rule
+     * @param entityTypeId registry ID of the entity type, as stored on the cage
+     */
+    public static Outcome tryPlace(ServerLevel deathLevel, LivingEntity entity, RespawnEntry entry,
+                                   String entityTypeId) {
         if (!Config.ENABLE_MOD.getAsBoolean()) {
-            DebugLog.info("Respawn cage placement skipped: mod disabled (actualEntityId={})", actualEntityId);
+            DebugLog.info("Respawn cage placement skipped: mod disabled (entity={})", entityTypeId);
+            return Outcome.ABANDONED;
+        }
+
+        UUID sourceUuid = entity.getUUID();
+        ResourceLocation entityType = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+        if (entityType == null) {
+            UniversalBossRespawner.LOGGER.warn("Cannot resolve entity type for {}; no respawn cage placed",
+                    entityTypeId);
+            return Outcome.ABANDONED;
+        }
+
+        RespawnEntry.PlacementRule placement = entry.placement();
+
+        ResourceKey<Level> targetDimension;
+        BlockPos origin;
+        HomeRecord homeSnapshot = null;
+
+        if (placement.mode() == RespawnEntry.PlacementMode.HOME) {
+            BossHomeSavedData data = BossHomeSavedData.get(deathLevel.getServer());
+            HomeRecord record = data.get(sourceUuid);
+            if (record == null) {
+                // Design rule: home mode never falls back to the death position.
+                UniversalBossRespawner.LOGGER.warn(
+                        "No home record for {} (uuid={}, death dimension={}, death position={}); "
+                                + "no respawn cage placed. The entity was never observed alive by this mod, "
+                                + "or the matching home rule was added after it loaded - check the rule load "
+                                + "order or run /reload.",
+                        entityTypeId, sourceUuid, deathLevel.dimension().location(), entity.blockPosition());
+                return Outcome.ABANDONED;
+            }
+            targetDimension = record.dimension();
+            origin = record.homePos();
+            homeSnapshot = record;
+        } else {
+            targetDimension = deathLevel.dimension();
+            origin = entity.blockPosition();
+        }
+
+        // The mode offset is applied exactly once, here, to the raw anchor.
+        BlockPos base = origin.offset(placement.offset()[0], placement.offset()[1], placement.offset()[2]);
+
+        return execute(new Request(
+                deathLevel.getServer(),
+                targetDimension,
+                base,
+                sourceUuid,
+                entityType,
+                entityTypeId,
+                homeSnapshot,
+                RespawnRuleSnapshot.of(entry),
+                deathLevel.getGameTime()));
+    }
+
+    /**
+     * Re-runs the pipeline for a task that was deferred. Uses the stored rule snapshot, so a later
+     * {@code /reload} cannot change how the original death is handled.
+     */
+    public static Outcome executeDeferred(ServerLevel level, PendingPlacementTask task) {
+        return execute(new Request(
+                level.getServer(),
+                task.targetDimension(),
+                task.targetBase(),
+                task.lastSourceEntityUuid(),
+                task.entityType(),
+                task.entityType().toString(),
+                task.homeSnapshot(),
+                task.ruleSnapshot(),
+                task.createdGameTime()));
+    }
+
+    // ------------------------------------------------------------------ pipeline
+
+    private record Request(MinecraftServer server, ResourceKey<Level> targetDimension, BlockPos base,
+                           UUID sourceEntityUuid, ResourceLocation entityType, String entityTypeId,
+                           HomeRecord homeSnapshot, RespawnRuleSnapshot rules, long gameTime) {
+    }
+
+    private static Outcome execute(Request request) {
+        ServerLevel level = request.server().getLevel(request.targetDimension());
+        if (level == null) {
+            // A dimension that does not exist can never load, so a deferred task would never complete.
+            // Fail now, and drop the home record so it cannot leak either.
+            UniversalBossRespawner.LOGGER.error(
+                    "Target dimension {} is unavailable for the respawn cage of {} (uuid={}, base={}); "
+                            + "no cage placed and no deferred task created.",
+                    request.targetDimension().location(), request.entityTypeId(),
+                    request.sourceEntityUuid(), request.base());
+            dropHomeRecord(request);
+            return Outcome.ABANDONED;
+        }
+
+        if (!level.isLoaded(request.base())) {
+            // Never write here: this path runs from a death event or a chunk-load follow-up, and a write
+            // would synchronously generate the chunk.
+            return defer(level, request);
+        }
+
+        RespawnEntry.PlacementRule placement = request.rules().placement();
+
+        BlockPos chosen;
+        if (placement.forcePlace()) {
+            chosen = request.base();
+        } else {
+            Optional<BlockPos> found = PlacementResolver.findPlacementPos(level, request.base(), placement);
+            if (found.isPresent()) {
+                chosen = found.get();
+            } else if (placement.searchFailureFallback()) {
+                DebugLog.info("No safe placement found; forcing respawn cage at {} for {}",
+                        request.base(), request.entityTypeId());
+                chosen = request.base();
+            } else {
+                UniversalBossRespawner.LOGGER.warn(
+                        "No safe placement position for {} near {} and search_failure_fallback is false; "
+                                + "no respawn cage placed",
+                        request.entityTypeId(), request.base());
+                return Outcome.ABANDONED;
+            }
+        }
+
+        if (isProtected(level, chosen, placement)) {
+            UniversalBossRespawner.LOGGER.warn(
+                    "Refusing to place the respawn cage for {} at {}: the block there (or below it) is in "
+                            + "protected_blocks or the global protectedBlockIds list. The existing block is "
+                            + "left untouched.",
+                    request.entityTypeId(), chosen);
+            return Outcome.ABANDONED;
+        }
+
+        if (!hasExistingCageConflict(level, chosen, request)) {
+            return Outcome.ABANDONED;
+        }
+
+        if (!writeCage(level, chosen, request)) {
+            return Outcome.ABANDONED;
+        }
+
+        // The cage now carries the home anchor itself, so the death record has served its purpose.
+        dropHomeRecord(request);
+        DebugLog.info("Placed {} respawn cage at {}", request.entityTypeId(), chosen);
+        return Outcome.PLACED;
+    }
+
+    /** Queues (or refreshes) the persistent deferred task for this placement target. */
+    private static Outcome defer(ServerLevel level, Request request) {
+        BossHomeSavedData data = BossHomeSavedData.get(request.server());
+        PendingPlacementTask task = new PendingPlacementTask(
+                request.targetDimension(),
+                request.base(),
+                request.sourceEntityUuid(),
+                request.entityType(),
+                request.homeSnapshot(),
+                request.rules(),
+                request.gameTime());
+
+        UUID displaced = data.enqueuePendingPlacement(task);
+        if (displaced != null && !displaced.equals(request.sourceEntityUuid())) {
+            // This target already had a task from an earlier death; that death's home record is now
+            // redundant because the merged task carries its own home snapshot.
+            if (data.remove(displaced)) {
+                DebugLog.info("Merged deferred placement at {}: dropped redundant home record for {}",
+                        request.base(), displaced);
+            }
+        }
+
+        DebugLog.info("Deferred respawn cage for {} at {} (chunk not loaded); queue size={}",
+                request.entityTypeId(), request.base(), data.pendingCount());
+        return Outcome.DEFERRED;
+    }
+
+    /** Drops the source entity's home record, if this placement came from a home-mode death. */
+    private static void dropHomeRecord(Request request) {
+        if (request.homeSnapshot() == null) {
+            return;
+        }
+        BossHomeSavedData data = BossHomeSavedData.get(request.server());
+        if (data.remove(request.sourceEntityUuid())) {
+            DebugLog.info("Removed home record for {} after successful placement", request.sourceEntityUuid());
+        }
+    }
+
+    /**
+     * The unbreakable protected-block floor. Applies to <em>every</em> write path, including forced
+     * placement; {@code avoid_blocks} by contrast is a search preference only.
+     */
+    private static boolean isProtected(ServerLevel level, BlockPos pos, RespawnEntry.PlacementRule placement) {
+        List<String> protectedIds = new ArrayList<>(Config.PROTECTED_BLOCK_IDS.get());
+        for (String extra : placement.protectedBlocks()) {
+            if (!protectedIds.contains(extra)) {
+                protectedIds.add(extra);
+            }
+        }
+        if (protectedIds.isEmpty()) {
             return false;
         }
+        // Same coverage as the historical avoidance check: the target block and the block under it.
+        return PlacementResolver.isAvoided(level.getBlockState(pos), protectedIds)
+                || PlacementResolver.isAvoided(level.getBlockState(pos.below()), protectedIds);
+    }
 
-        Optional<BlockPos> posOpt = PlacementResolver.findPlacementPos(level, entity, entry.placement());
-        BlockPos pos;
-        if (posOpt.isPresent()) {
-            pos = posOpt.get();
-            DebugLog.info("Selected placement position {} for {} respawn cage", pos, actualEntityId);
-        } else {
-            if (!Config.FORCE_PLACE_ON_NO_SAFE_SPOT.getAsBoolean()) {
-                DebugLog.info("No safe placement found and force placement is disabled; skipping {} respawn cage",
-                        actualEntityId);
-                return false;
-            }
-
-            int[] offset = entry.placement().offset();
-            pos = entity.blockPosition().offset(offset[0], offset[1], offset[2]);
-            if (isBlockedByForeignCage(level, pos)) {
-                DebugLog.info("Forced placement blocked at {} by foreignCageBlockIds for {} respawn cage",
-                        pos, actualEntityId);
-                return false;
-            }
-
-            DebugLog.info("No safe placement found; forcing respawn cage at search origin {} for {} respawn cage",
-                    pos, actualEntityId);
+    /**
+     * Applies {@code duplicate.mode} at the chosen position.
+     *
+     * @return {@code false} when {@code keep_existing} found a cage and the placement should stop
+     */
+    private static boolean hasExistingCageConflict(ServerLevel level, BlockPos pos, Request request) {
+        String mode = request.rules().duplicate().mode();
+        if ("allow_multiple".equals(mode)) {
+            DebugLog.info("Duplicate mode is allow_multiple; skipping existing-cage check for {}",
+                    request.entityTypeId());
+            return true;
         }
 
-        if (!"allow_multiple".equals(entry.duplicate().mode())) {
-            DebugLog.info("Checking existing cages: entity={} mode={} radius={} center={}",
-                    actualEntityId, entry.duplicate().mode(), entry.duplicate().searchRadius(), pos);
-            boolean hasExisting = hasExistingCage(level, pos, actualEntityId, entry.duplicate().searchRadius());
-            if (hasExisting) {
-                if ("keep_existing".equals(entry.duplicate().mode())) {
-                    DebugLog.info("Keeping existing {} respawn cage near {}", actualEntityId, pos);
-                    return false;
-                }
-                DebugLog.info("Removing existing {} respawn cages near {} (replace_existing)", actualEntityId, pos);
-                removeExistingCages(level, pos, actualEntityId, entry.duplicate().searchRadius());
-            }
-        } else {
-            DebugLog.info("Duplicate mode is allow_multiple; skipping existing-cage check for {}", actualEntityId);
+        int radius = request.rules().duplicate().searchRadius();
+        DebugLog.info("Checking existing cages: entity={} mode={} radius={} center={}",
+                request.entityTypeId(), mode, radius, pos);
+        if (!hasExistingCage(level, pos, request.entityTypeId(), radius)) {
+            return true;
         }
+        if ("keep_existing".equals(mode)) {
+            DebugLog.info("Keeping existing {} respawn cage near {}", request.entityTypeId(), pos);
+            return false;
+        }
+        DebugLog.info("Removing existing {} respawn cages near {} (replace_existing)", request.entityTypeId(), pos);
+        removeExistingCages(level, pos, request.entityTypeId(), radius);
+        return true;
+    }
 
+    private static boolean writeCage(ServerLevel level, BlockPos pos, Request request) {
         BlockState oldState = level.getBlockState(pos);
         if (!level.setBlock(pos, ModBlocks.BOSS_RESPAWNER.get().defaultBlockState(), 2)) {
             UniversalBossRespawner.LOGGER.warn("Failed to set Boss respawner block at {}", pos);
@@ -86,68 +316,44 @@ public final class RespawnCagePlacer {
             return false;
         }
 
-        CompoundTag spawnNbt = parseNbt(entry.spawn().nbt());
+        RespawnEntry.ActivationRule activation = request.rules().activation();
+        RespawnEntry.SpawnRule spawn = request.rules().spawn();
+
         be.setSpawnerData(
-                actualEntityId,
-                entry.activation().item().toString(),
-                entry.activation().amount(),
-                entry.activation().consume(),
-                spawnNbt,
-                entry.spawn().delayTicks(),
-                entry.spawn().requirePlayerNearby(),
-                entry.spawn().playerRange(),
-                entry.spawn().allowPeaceful(),
-                entry.spawn().count(),
-                entry.spawn().spawnOffset(),
-                entry.spawn().finalizeSpawn(),
-                entry.spawn().maxAttempts(),
-                entry.spawn().retryIntervalTicks());
-        DebugLog.info("Set spawner data on newly placed cage: entity={} key={} amount={} consume={} delay={} maxAttempts={}",
-                actualEntityId, entry.activation().item(), entry.activation().amount(),
-                entry.activation().consume(), entry.spawn().delayTicks(), entry.spawn().maxAttempts());
+                request.entityTypeId(),
+                activation.item().toString(),
+                activation.amount(),
+                activation.consume(),
+                parseNbt(spawn.nbt()),
+                spawn.delayTicks(),
+                spawn.requirePlayerNearby(),
+                spawn.playerRange(),
+                spawn.allowPeaceful(),
+                spawn.count(),
+                spawn.spawnOffset(),
+                spawn.finalizeSpawn(),
+                spawn.maxAttempts(),
+                spawn.retryIntervalTicks());
+
+        // Home-mode cages remember the original anchor so the respawned entity inherits it instead of
+        // registering wherever it happens to appear.
+        if (request.homeSnapshot() != null) {
+            be.setHomeAnchor(request.homeSnapshot().dimension(), request.homeSnapshot().homePos());
+        }
 
         level.sendBlockUpdated(pos, oldState, newState, 3);
-
-        DebugLog.info("Placed {} respawn cage at {}", actualEntityId, pos);
         return true;
     }
 
-    private static boolean isBlockedByForeignCage(ServerLevel level, BlockPos pos) {
-        List<? extends String> foreignIds = Config.FOREIGN_CAGE_BLOCK_IDS.get();
-        return PlacementResolver.isAvoided(level.getBlockState(pos), foreignIds)
-                || PlacementResolver.isAvoided(level.getBlockState(pos.below()), foreignIds);
-    }
+    // ------------------------------------------------------------------ existing cage scan
 
     private static boolean hasExistingCage(ServerLevel level, BlockPos center, String entityTypeId, int radius) {
         int r = Math.min(radius, 32);
-        int minChunkX = (center.getX() - r) >> 4;
-        int maxChunkX = (center.getX() + r) >> 4;
-        int minChunkZ = (center.getZ() - r) >> 4;
-        int maxChunkZ = (center.getZ() + r) >> 4;
         long radiusSq = (long) r * r;
 
-        DebugLog.info("Searching existing cages: entity={} center={} radius={} chunks=[{},{}]-[{},{}]",
-                entityTypeId, center, r, minChunkX, minChunkZ, maxChunkX, maxChunkZ);
-
-        for (int cx = minChunkX; cx <= maxChunkX; cx++) {
-            for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
-                LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
-                if (chunk == null) {
-                    continue;
-                }
-                for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
-                    if (blockEntity instanceof BossRespawnerBlockEntity cage
-                            && entityTypeId.equals(cage.getEntityTypeId())
-                            && cage.getBlockPos().distSqr(center) <= radiusSq) {
-                        if (level.getBlockState(cage.getBlockPos()).is(ModBlocks.BOSS_RESPAWNER.get())) {
-                            DebugLog.info("Found existing {} respawn cage at {}", entityTypeId, cage.getBlockPos());
-                            return true;
-                        }
-                        DebugLog.info("Ignoring orphaned/stale {} BlockEntity at {} (actual block state={})",
-                                entityTypeId, cage.getBlockPos(), level.getBlockState(cage.getBlockPos()));
-                    }
-                }
-            }
+        for (BlockPos cagePos : existingCagePositions(level, center, entityTypeId, r, radiusSq)) {
+            DebugLog.info("Found existing {} respawn cage at {}", entityTypeId, cagePos);
+            return true;
         }
         DebugLog.info("No existing {} cage found near {}", entityTypeId, center);
         return false;
@@ -155,18 +361,25 @@ public final class RespawnCagePlacer {
 
     private static void removeExistingCages(ServerLevel level, BlockPos center, String entityTypeId, int radius) {
         int r = Math.min(radius, 32);
+        long radiusSq = (long) r * r;
+
+        // Collect first, then destroy: destroying while iterating the chunk's BlockEntity map would
+        // throw ConcurrentModificationException.
+        List<BlockPos> toDestroy = existingCagePositions(level, center, entityTypeId, r, radiusSq);
+        for (BlockPos pos : toDestroy) {
+            DebugLog.info("Destroying existing {} cage at {}", entityTypeId, pos);
+            level.destroyBlock(pos, false);
+        }
+    }
+
+    private static List<BlockPos> existingCagePositions(ServerLevel level, BlockPos center, String entityTypeId,
+                                                        int r, long radiusSq) {
+        List<BlockPos> found = new ArrayList<>();
         int minChunkX = (center.getX() - r) >> 4;
         int maxChunkX = (center.getX() + r) >> 4;
         int minChunkZ = (center.getZ() - r) >> 4;
         int maxChunkZ = (center.getZ() + r) >> 4;
-        long radiusSq = (long) r * r;
 
-        DebugLog.info("Removing existing cages: entity={} center={} radius={} chunks=[{},{}]-[{},{}]",
-                entityTypeId, center, r, minChunkX, minChunkZ, maxChunkX, maxChunkZ);
-
-        // Collect first, then destroy. Avoid modifying the chunk's BlockEntity map
-        // while iterating over it, which can cause ConcurrentModificationException.
-        List<BlockPos> toDestroy = new ArrayList<>();
         for (int cx = minChunkX; cx <= maxChunkX; cx++) {
             for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
                 LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
@@ -178,21 +391,16 @@ public final class RespawnCagePlacer {
                             && entityTypeId.equals(cage.getEntityTypeId())
                             && cage.getBlockPos().distSqr(center) <= radiusSq) {
                         if (level.getBlockState(cage.getBlockPos()).is(ModBlocks.BOSS_RESPAWNER.get())) {
-                            DebugLog.info("Queued existing {} cage for destruction at {}", entityTypeId, cage.getBlockPos());
-                            toDestroy.add(cage.getBlockPos());
+                            found.add(cage.getBlockPos());
                         } else {
-                            DebugLog.info("Skipping orphaned/stale {} BlockEntity at {} (actual block state={})",
+                            DebugLog.info("Ignoring orphaned/stale {} BlockEntity at {} (actual block state={})",
                                     entityTypeId, cage.getBlockPos(), level.getBlockState(cage.getBlockPos()));
                         }
                     }
                 }
             }
         }
-
-        for (BlockPos pos : toDestroy) {
-            DebugLog.info("Destroying existing {} cage at {}", entityTypeId, pos);
-            level.destroyBlock(pos, false);
-        }
+        return found;
     }
 
     private static CompoundTag parseNbt(String nbt) {

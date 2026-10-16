@@ -4,6 +4,12 @@ import java.util.List;
 
 import net.neoforged.neoforge.common.ModConfigSpec;
 
+/**
+ * Common (server-visible) configuration for the mod.
+ *
+ * <p>Placement and compatibility policy lives in the data-driven JSON rules; the common config only keeps
+ * the master switch, the client-side highlight settings and one non-negotiable safety floor.
+ */
 public final class Config {
     public static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
@@ -11,13 +17,6 @@ public final class Config {
             .comment("Master switch for the whole mod. Set false to disable all placement/spawning logic.")
             .translation("boss_respawner.configuration.general.enableMod")
             .define("general.enableMod", true);
-
-    public static final ModConfigSpec.BooleanValue FORCE_PLACE_ON_NO_SAFE_SPOT = BUILDER
-            .comment("When no safe placement position is found after a Boss death, force place the respawner at the search origin.",
-                    "This ignores placement safety rules such as require_ground/avoid_fluids/avoid_blocks, but still respects duplicate mode and the global foreignCageBlockIds compatibility list.",
-                    "Default: true")
-            .translation("boss_respawner.configuration.general.forcePlaceOnNoSafeSpot")
-            .define("general.forcePlaceOnNoSafeSpot", true);
 
     public static final ModConfigSpec.BooleanValue HIGHLIGHT_BOSS_RESPAWNER = BUILDER
             .comment("Render a vanilla-style glowing outline around Boss Respawner blocks so players can see them through walls.",
@@ -32,12 +31,19 @@ public final class Config {
             .translation("boss_respawner.configuration.general.highlightBossRespawnerRange")
             .defineInRange("general.highlightBossRespawnerRange", 32, 1, 256);
 
-    public static final ModConfigSpec.ConfigValue<List<? extends String>> FOREIGN_CAGE_BLOCK_IDS = BUILDER
-            .comment("Block IDs that should be treated as other mods' respawn cages/altars.",
-                    "The placement code will avoid placing near these blocks.",
+    /**
+     * Hard safety floor: blocks this mod must never overwrite, regardless of {@code force_place}.
+     *
+     * <p>This is deliberately global rather than per-rule. "Do not destroy another mod's block" is a
+     * cross-cutting guarantee that must not depend on every datapack author remembering to declare it.
+     * A rule's own {@code protected_blocks} can only add to this list, never subtract from it.
+     */
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> PROTECTED_BLOCK_IDS = BUILDER
+            .comment("Block IDs that this mod must never overwrite, in any placement mode, even when force_place is true.",
+                    "Rules can add more protection via their own protected_blocks list, but cannot remove entries listed here.",
                     "Example: [\"cataclysm:boss_respawner\"]")
-            .translation("boss_respawner.configuration.compat.foreignCageBlockIds")
-            .defineListAllowEmpty("compat.foreignCageBlockIds", List.of("cataclysm:boss_respawner"),
+            .translation("boss_respawner.configuration.compat.protectedBlockIds")
+            .defineListAllowEmpty("compat.protectedBlockIds", List.of("cataclysm:boss_respawner"),
                     () -> "", obj -> obj instanceof String);
 
     public static final ModConfigSpec.BooleanValue DEBUG_INFO = BUILDER

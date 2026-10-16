@@ -4,13 +4,18 @@ import com.zonlong.bossrespawner.Config;
 import com.zonlong.bossrespawner.DebugLog;
 import com.zonlong.bossrespawner.UniversalBossRespawner;
 import com.zonlong.bossrespawner.block.BossRespawnerBlock;
+import com.zonlong.bossrespawner.data.BossHomeSavedData;
+import com.zonlong.bossrespawner.data.HomeRecord;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Difficulty;
@@ -29,6 +34,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
+import javax.annotation.Nullable;
 
 public class BossRespawnerBlockEntity extends BlockEntity {
     private static final String TAG_ENTITY_TYPE = "EntityType";
@@ -39,6 +45,11 @@ public class BossRespawnerBlockEntity extends BlockEntity {
     private static final String TAG_LIT_TICKS = "LitTicks";
     private static final String TAG_ATTEMPTS = "Attempts";
     private static final String TAG_SPAWNED = "Spawned";
+    private static final String TAG_HOME_DIMENSION = "HomeDimension";
+    private static final String TAG_HOME_POS = "HomePos";
+    private static final String TAG_HOME_X = "X";
+    private static final String TAG_HOME_Y = "Y";
+    private static final String TAG_HOME_Z = "Z";
 
     private String entityTypeId = "";
     private String keyItemId = "";
@@ -67,6 +78,18 @@ public class BossRespawnerBlockEntity extends BlockEntity {
     private int litTicks = 0;
     private int attempts = 0;
     private boolean spawned = false;
+
+    /**
+     * Original home anchor this cage was created from, in home mode. {@code null} for death-mode cages and
+     * for cages placed by older versions, which keep their previous behaviour.
+     *
+     * <p>Kept here (not read from the third-party entity, and not re-read from the database) so the
+     * respawn chain survives independently of the death entity's record.
+     */
+    @Nullable
+    private ResourceKey<Level> homeDimension;
+    @Nullable
+    private BlockPos homePos;
 
     public BossRespawnerBlockEntity(BlockPos pos, BlockState state) {
         super(com.zonlong.bossrespawner.init.ModBlockEntities.BOSS_RESPAWNER.get(), pos, state);
@@ -161,8 +184,8 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         Vec3 spawnPos = Vec3.atLowerCornerWithOffset(
                 pos.offset(spawnOffset[0], spawnOffset[1], spawnOffset[2]),
                 0.5D, 0.0D, 0.5D);
-        DebugLog.info("trySpawn: entityId={} type={} pos={} spawnPos={} count={} finalizeSpawn={} nbtEmpty={}",
-                entityTypeId, type, pos, spawnPos, count, finalizeSpawn, spawnNbt.isEmpty());
+        DebugLog.info("trySpawn: entityId={} type={} pos={} spawnPos={} count={} finalizeSpawn={} nbtEmpty={} homeAnchor={}",
+                entityTypeId, type, pos, spawnPos, count, finalizeSpawn, spawnNbt.isEmpty(), hasHomeAnchor());
 
         // Create all entities first so a late creation failure doesn't leave partial spawns.
         List<Entity> created = new ArrayList<>();
@@ -181,6 +204,10 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                 if (entity instanceof Mob mob && finalizeSpawn) {
                     mob.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(pos), MobSpawnType.SPAWNER, null);
                 }
+                // Bind the new UUID to the original home *before* the entity joins the level. The
+                // EntityJoinLevelEvent hook registers on a "first observation wins" basis, so writing the
+                // anchor first means the spawn position can never be mistaken for the home.
+                bindHomeAnchor(serverLevel, entity);
                 created.add(entity);
                 DebugLog.info("trySpawn created entity #{} of type {} for {}", i, entity.getType(), entityTypeId);
             }
@@ -189,6 +216,8 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                 if (!serverLevel.addFreshEntity(entity)) {
                     DebugLog.info("trySpawn failed: addFreshEntity rejected entity {} for {}", entity, entityTypeId);
                     discardAll(created);
+                    // The provisional registrations must not survive a failed spawn.
+                    releaseHomeAnchors(serverLevel, created);
                     return false;
                 }
             }
@@ -196,9 +225,67 @@ public class BossRespawnerBlockEntity extends BlockEntity {
             return true;
         } catch (Exception e) {
             discardAll(created);
+            releaseHomeAnchors(serverLevel, created);
             UniversalBossRespawner.LOGGER.warn("Failed to spawn {} from respawner at {}", entityTypeId, pos, e);
             DebugLog.info("trySpawn caught exception for {} at {}: {}", entityTypeId, pos, e.toString());
             return false;
+        }
+    }
+
+    /** True when this cage carries a home anchor, i.e. it was created from a home-mode rule. */
+    public boolean hasHomeAnchor() {
+        return homeDimension != null && homePos != null;
+    }
+
+    @Nullable
+    public ResourceKey<Level> getHomeDimension() {
+        return homeDimension;
+    }
+
+    @Nullable
+    public BlockPos getHomePos() {
+        return homePos;
+    }
+
+    /**
+     * Records the home anchor this cage should hand down to the entities it spawns.
+     *
+     * @param dimension dimension of the original observation
+     * @param homePos   the raw observation position, without any JSON offset applied
+     */
+    public void setHomeAnchor(ResourceKey<Level> dimension, BlockPos homePos) {
+        this.homeDimension = dimension;
+        this.homePos = homePos.immutable();
+        setChanged();
+        DebugLog.info("Cage at {} now carries home anchor {} in {}", worldPosition, homePos, dimension.location());
+    }
+
+    /** Registers {@code entity}'s UUID against this cage's home anchor, when it has one. */
+    private void bindHomeAnchor(ServerLevel serverLevel, Entity entity) {
+        if (!hasHomeAnchor()) {
+            return;
+        }
+        ResourceLocation typeId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+        if (typeId == null) {
+            return;
+        }
+        BossHomeSavedData data = BossHomeSavedData.get(serverLevel.getServer());
+        data.registerOrReplace(new HomeRecord(entity.getUUID(), typeId, homeDimension, homePos));
+        DebugLog.info("Bound respawned entity uuid={} to home {} in {}",
+                entity.getUUID(), homePos, homeDimension.location());
+    }
+
+    /** Undoes {@link #bindHomeAnchor} for a batch whose {@code addFreshEntity} failed. */
+    private void releaseHomeAnchors(ServerLevel serverLevel, List<Entity> entities) {
+        if (!hasHomeAnchor() || entities.isEmpty()) {
+            return;
+        }
+        BossHomeSavedData data = BossHomeSavedData.get(serverLevel.getServer());
+        for (Entity entity : entities) {
+            if (entity != null && data.remove(entity.getUUID())) {
+                DebugLog.info("Cleaned up provisional home record for uuid={} after a failed spawn",
+                        entity.getUUID());
+            }
         }
     }
 
@@ -372,9 +459,29 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         this.litTicks = tag.getInt(TAG_LIT_TICKS);
         this.attempts = tag.getInt(TAG_ATTEMPTS);
         this.spawned = tag.getBoolean(TAG_SPAWNED);
+
+        // Optional: only home-mode cages written by this version carry an anchor.
+        this.homeDimension = null;
+        this.homePos = null;
+        if (tag.contains(TAG_HOME_DIMENSION, Tag.TAG_STRING) && tag.contains(TAG_HOME_POS, Tag.TAG_COMPOUND)) {
+            try {
+                CompoundTag homeTag = tag.getCompound(TAG_HOME_POS);
+                this.homeDimension = ResourceKey.create(Registries.DIMENSION,
+                        ResourceLocation.parse(tag.getString(TAG_HOME_DIMENSION)));
+                this.homePos = new BlockPos(
+                        homeTag.getInt(TAG_HOME_X), homeTag.getInt(TAG_HOME_Y), homeTag.getInt(TAG_HOME_Z));
+            } catch (Exception e) {
+                this.homeDimension = null;
+                this.homePos = null;
+                UniversalBossRespawner.LOGGER.warn(
+                        "Ignoring malformed home anchor on respawner at {}: {}", worldPosition, e.toString());
+            }
+        }
+
         invalidateCaches();
-        DebugLog.info("Loaded respawner data at {}: entity={} key={} litTicks={} attempts={} spawned={}",
-                worldPosition, this.entityTypeId, this.keyItemId, this.litTicks, this.attempts, this.spawned);
+        DebugLog.info("Loaded respawner data at {}: entity={} key={} litTicks={} attempts={} spawned={} homeAnchor={}",
+                worldPosition, this.entityTypeId, this.keyItemId, this.litTicks, this.attempts, this.spawned,
+                hasHomeAnchor());
     }
 
     @Override
@@ -407,6 +514,17 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         tag.putInt(TAG_LIT_TICKS, litTicks);
         tag.putInt(TAG_ATTEMPTS, attempts);
         tag.putBoolean(TAG_SPAWNED, spawned);
+
+        // Home anchor, only for home-mode cages. Absent for death-mode cages and for cages written by
+        // older versions, which then keep their previous behaviour.
+        if (hasHomeAnchor()) {
+            tag.putString(TAG_HOME_DIMENSION, homeDimension.location().toString());
+            CompoundTag homeTag = new CompoundTag();
+            homeTag.putInt(TAG_HOME_X, homePos.getX());
+            homeTag.putInt(TAG_HOME_Y, homePos.getY());
+            homeTag.putInt(TAG_HOME_Z, homePos.getZ());
+            tag.put(TAG_HOME_POS, homeTag);
+        }
     }
 
     @Override

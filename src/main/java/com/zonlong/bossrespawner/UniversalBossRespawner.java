@@ -2,7 +2,9 @@ package com.zonlong.bossrespawner;
 
 import com.mojang.logging.LogUtils;
 import com.zonlong.bossrespawner.event.DataPackHandler;
+import com.zonlong.bossrespawner.event.EntityHomeRegistrationHandler;
 import com.zonlong.bossrespawner.event.LivingDeathHandler;
+import com.zonlong.bossrespawner.event.PendingPlacementService;
 import com.zonlong.bossrespawner.init.ModBlockEntities;
 import com.zonlong.bossrespawner.init.ModBlocks;
 import com.zonlong.bossrespawner.init.ModItems;
@@ -31,6 +33,8 @@ public class UniversalBossRespawner {
 
         modEventBus.addListener(this::addCreative);
         NeoForge.EVENT_BUS.register(LivingDeathHandler.class);
+        NeoForge.EVENT_BUS.register(EntityHomeRegistrationHandler.class);
+        NeoForge.EVENT_BUS.register(PendingPlacementService.class);
         NeoForge.EVENT_BUS.addListener(DataPackHandler::onAddReloadListeners);
 
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);

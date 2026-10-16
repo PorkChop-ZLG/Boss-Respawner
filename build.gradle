@@ -32,6 +32,8 @@ repositories {
         name = 'CurseMaven'
         url = 'https://www.cursemaven.com'
     }
+    // Required by the JUnit 5 unit-test dependencies declared further below.
+    mavenCentral()
 }
 
 base {
@@ -109,6 +111,12 @@ neoForge {
             sourceSet(sourceSets.main)
         }
     }
+
+    // JUnit 5 integration: src/test/java runs against the Minecraft/NeoForge classes of this mod.
+    unitTest {
+        enable()
+        testedMod = mods.getByName(project.mod_id)
+    }
 }
 
 // Sets up a dependency configuration called 'localRuntime'.
@@ -130,6 +138,22 @@ dependencies {
     runtimeOnly "curse.maven:geckolib-388172:8350073"
     runtimeOnly "curse.maven:mowzies-mobs-250498:7760267"
     runtimeOnly "curse.maven:tslatentitystatus-tes-830420:7115952"
+
+    // JUnit 5 for pure-logic unit tests (JSON schema parsing, SavedData NBT round-trip).
+    // These tests never bootstrap the game; they only exercise plain Java logic plus
+    // the Minecraft classes that are already on the runtime classpath.
+    testImplementation platform("org.junit:junit-bom:5.10.2")
+    testImplementation "org.junit.jupiter:junit-jupiter"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"
+        showStandardStreams = false
+        exceptionFormat = 'full'
+    }
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

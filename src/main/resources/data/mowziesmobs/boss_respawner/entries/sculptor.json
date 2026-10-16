@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "enabled": true,
   "priority": 0,
   "entity": "mowziesmobs:sculptor",
@@ -9,13 +9,19 @@
     "consume": true
   },
   "placement": {
-    "offset": [0, 0, 0],
-    "search_down": 32,
-    "search_up": 16,
-    "horizontal_radius": 4,
-    "require_ground": true,
-    "avoid_fluids": false,
-    "avoid_blocks": ["cataclysm:boss_respawner"]
+    "mode": "home",
+    "home": {
+      "offset": [0, 0, 0],
+      "force_place": false,
+      "search_failure_fallback": true,
+      "search_down": 32,
+      "search_up": 16,
+      "horizontal_radius": 4,
+      "require_ground": true,
+      "avoid_fluids": false,
+      "avoid_blocks": ["cataclysm:boss_respawner"],
+      "protected_blocks": []
+    }
   },
   "death": {
     "player_kill_only": false,

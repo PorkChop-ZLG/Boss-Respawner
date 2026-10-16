@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.zonlong.bossrespawner.DebugLog;
 import com.zonlong.bossrespawner.UniversalBossRespawner;
+import com.zonlong.bossrespawner.event.EntityHomeRegistrationHandler;
 
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.TagParser;
@@ -97,6 +98,11 @@ public class RespawnRuleReloadListener extends SimpleJsonResourceReloadListener 
         UniversalBossRespawner.LOGGER.info("Loaded {} boss respawn entries ({} effective entity mappings)",
                 byId.size(), byEntity.size());
         DebugLog.info("Respawn rule reload finished: {} entries, {} entity mappings", byId.size(), byEntity.size());
+
+        // Rules may have added home-mode entries for entities that are already loaded and therefore will
+        // never fire EntityJoinLevelEvent again. The back-fill runs on the next server tick; see
+        // EntityHomeRegistrationHandler.
+        EntityHomeRegistrationHandler.requestBackfill();
     }
 
     private boolean shouldReplace(RespawnEntry previous, RespawnEntry candidate) {

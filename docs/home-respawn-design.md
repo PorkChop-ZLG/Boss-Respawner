@@ -199,7 +199,7 @@ home
 | `avoid_blocks` | string[] | `[]` | 搜索时偏好避开的方块 ID，可被强制放置绕过 |
 | `protected_blocks` | string[] | `[]` | 任何情况下都不得覆盖的方块 ID |
 
-`search_failure_fallback` 的默认值必须是 `true`，因为本模组的默认目标是尽量确保重生笼生成。但目标区块未加载时不能立即执行强制放置，必须进入持久化待放置队列。
+`search_failure_fallback` 的默认值必须是 `true`，因为本模组的默认目标是尽量确保重生笼生成。但目标维度不可用或目标区块未加载时不能立即执行强制放置，必须按 §5.3 处理（前者立即失败，后者进入持久化待放置队列）。
 
 ### 4.5 内置 JSON 的模板要求
 
@@ -223,6 +223,7 @@ base = origin + placement.death.offset
 - 搜索成功：放置在搜索到的位置。
 - 搜索失败且 `search_failure_fallback: true`：目标区块已加载时直接放置在 `base`。
 - 搜索失败且 `search_failure_fallback: false`：不放置并输出 `warn`。
+- 目标维度不可用：按 §5.3.1 立即失败，不进入队列。
 - 目标区块未加载：不执行同步写入，进入持久化待放置队列。
 
 ### 5.2 home 模式
@@ -239,6 +240,7 @@ base = origin + placement.home.offset
 - 搜索成功：放置在搜索到的位置。
 - 搜索失败且 `search_failure_fallback: true`：目标区块已加载时直接放置在 `base`。
 - 搜索失败且 `search_failure_fallback: false`：不放置并输出 `warn`。
+- 目标维度不可用：按 §5.3.1 立即失败，不进入队列。
 - 目标区块未加载：不执行同步写入，进入持久化待放置队列。
 - 无 Home 记录：不放置、不使用死亡点，并输出包含实体 ID、UUID、死亡维度、死亡坐标和补救建议的 `warn`。
 
@@ -246,19 +248,69 @@ Home 模式始终围绕 Home 位置搜索，绝不切换为死亡位置搜索。
 
 ### 5.3 未加载区块：统一永久 defer
 
-未加载区块不通过 JSON 配置。无论是 `death` 还是 `home`，也无论 `force_place` 或 `search_failure_fallback` 的值如何，都使用同一规则：
+未加载区块不通过 JSON 配置。无论是 `death` 还是 `home`，也无论 `force_place` 或 `search_failure_fallback` 的值如何，都使用同一套规则。
 
-1. 检查目标维度和目标区块是否已加载；
-2. 未加载时不得调用会同步加载区块的写入接口；
+#### 5.3.1 目标维度不可用与目标区块未加载必须分开
+
+这两者的失败语义完全不同，**不得合并判断**：
+
+| 情况 | 判定方式 | 处理 |
+|---|---|---|
+| 目标维度不存在或不可用 | `server.getLevel(targetDimension) == null` | **立即失败**，输出 `error`；**不创建待放置任务**；删除该实体的 Home 记录 |
+| 维度可用、目标区块未加载 | `level.isLoaded(base)` 为 `false` | 进入持久化 defer 队列 |
+
+`MinecraftServer.getLevel(ResourceKey<Level>)` 是 `@Nullable`：当某个模组维度被移除后，指向它的 Home 记录将永远取不到 level。若把这种情况也送进「永久、不过期」的队列，任务会**永远无法完成、又永不释放**，同时 §6.1 还会持续保留其 Home 记录，形成永久泄漏。因此维度不可用必须走立即失败路径。
+
+#### 5.3.2 defer 流程
+
+1. 按 5.3.1 判定目标维度可用；
+2. 维度可用但目标区块未加载时，不得调用会同步加载区块的写入接口；
 3. 创建或更新持久化待放置任务；
 4. 目标区块之后真正加载时，再执行该任务；
 5. 任务在服务器重启后仍然存在，不设置自动过期时间。
 
-“永久”表示任务不会因为一次未加载检查而丢弃；它会一直保留到目标可以处理并成功放置，或因保护方块、重复策略等明确的终止条件被处理。不得通过改用死亡位置来规避队列。
+“永久”表示任务不会因为一次未加载检查而丢弃；它会一直保留到目标可以处理并成功放置，或因维度不可用、保护方块、重复策略等明确的终止条件被处理。不得通过改用死亡位置来规避队列。
 
 待放置任务必须保存规则快照和目标信息，不能只保存实体 UUID 后在未来重新读取可能已经变化的 JSON。
 
-建议使用 `ChunkEvent.Load` 或等价的安全服务器事件触发重试，并对同一任务去重、限频日志。事件回调和实体加入事件中均不得主动加载远处区块。
+#### 5.3.3 去重键
+
+任务按**放置目标**去重，而不是按来源实体去重：
+
+```text
+dedupKey = (targetDimension, targetBase)
+```
+
+理由：
+
+- 若按 `sourceEntityUuid` 去重，等于没有去重——每次死亡都是新实体、新 UUID，任务数将随历史死亡总数**无界增长**；
+- 按放置目标去重后，一个目标只有一条任务，任务总数由「世界上出现过的放置目标数」决定，是**有界**的。这正是「不设置自动过期时间」能够成立的前提。
+
+`sourceEntityUuid` 降级为「最近一次触发该任务的死亡」的信息字段，仅用于日志与排查。
+
+任务因去重而被合并时，必须同时清理**被合并那次死亡**的 Home 记录：该记录对已死亡实体已无用途，而任务自带的 `homeSnapshot` 已保存所需信息。规则快照以最近一次死亡为准。
+
+#### 5.3.4 执行 defer 任务的语义
+
+「执行该任务」指**用任务中保存的规则快照重跑一遍完整的放置流程**（搜索 → 按 `search_failure_fallback` 决定是否强制放置），等价于该死亡事件发生在区块已加载时应走的那条路径。
+
+- 目标区块此时已加载，只是满足了前置条件，**不改变** `force_place` / `search_failure_fallback` 的语义；
+- 因此 `search_failure_fallback: false` 的规则在 defer 之后**仍然不会**强制放置，不得因为「已经等了很久」而自行降级为强制放置；
+- 放置成功后的处理（写入方块、保存 Home 快照、删除来源 UUID 记录）与同步路径完全一致。
+
+#### 5.3.5 触发时机与线程约束
+
+`ChunkEvent.Load` 只能作为**触发信号**，不能在其中直接执行放置。
+
+该事件的 javadoc 明确警告：*"This event may be called before the underlying `LevelChunk` is promoted to `ChunkStatus#FULL`. You will cause chunk loading deadlocks if you don't delay your level interactions."* —— 与 §7.1 的 `EntityJoinLevelEvent` 属于同一类风险。
+
+因此：
+
+- `ChunkEvent.Load` 回调中只允许更新「待执行」标记或加入待执行集合，**不得调用任何世界写入接口**；
+- 危险的不只是「远处区块」。`duplicate.mode: replace_existing` 会 `destroyBlock` 相邻位置的重生笼，方块更新会触发邻居通知，而 `ChunkEvent.Load` 触发的那个区块本身正在加载、**相邻区块可能未加载**。在这些回调里发起世界写入，等于在区块加载流程内部再发起一次同步区块加载，会导致死锁；
+- 实际的放置动作必须延后到当前区块加载流程**之外的后续 tick** 执行（例如 `server.execute(...)`，或在 `ServerTickEvent` 中消费待执行列表）；
+- `EntityJoinLevelEvent` 回调中同样只做轻量登记，不得执行放置；
+- 必须对同一任务去重，并对日志限频，避免同一任务在多次区块加载中被反复记录。
 
 ### 5.4 强制放置
 
@@ -275,6 +327,8 @@ Home 模式始终围绕 Home 位置搜索，绝不切换为死亡位置搜索。
 `duplicate.mode` 仍然保留。强制放置只绕过位置安全检查，不自动绕过重复重生笼策略。
 
 如果目标维度不可用、坐标超出世界边界、命中保护方块或底层世界操作失败，Java 代码仍应记录错误或警告。此类底层失败不能通过换到死亡位置来掩盖。
+
+其中**目标维度不可用**必须按 §5.3.1 走立即失败路径，不得进入 defer 队列，否则会产生永远无法完成、又永不过期的任务。
 
 ### 5.5 avoid_blocks 与 protected_blocks
 
@@ -321,12 +375,53 @@ com.zonlong.bossrespawner.data.BossHomeSavedData
 boss_respawner_homes.dat
 ```
 
+#### 6.0 存档落点与命名约束
+
+由于挂在 **Overworld** 的 `DimensionDataStorage` 上，文件的完整落点是存档根目录下的 `data/`：
+
+```text
+saves/<存档名>/data/boss_respawner_homes.dat
+```
+
+路径的推导链（Minecraft 1.21.1）：
+
+1. `ServerChunkCache` 用 `<维度目录>/data` 构造每个维度的 `DimensionDataStorage`；
+2. `DimensionType.getStorageFolder` 对**主世界直接返回存档根目录**（下界为 `DIM-1`、末地为 `DIM1`、其他维度才是 `dimensions/<命名空间>/<路径>`）；
+3. `DimensionDataStorage.getDataFile` 用 `new File(dataFolder, name + ".dat")` 拼接，**不会再建子目录**。
+
+可直接对照同一目录下已有的原版与模组文件，例如 `raids.dat`、`random_sequences.dat`，以及同样采用「主世界级 SavedData」模式的第三方模组文件（如 `legendary_monsters_worlddata.dat`）。
+
+**命名约束：`name` 中不得包含 `/` 或 `\`。**
+
+`new File(parent, child)` 会把 child 里的分隔符当成子路径，但 `DimensionDataStorage` **不会创建该子目录**；而 `SavedData.save` 对失败只做：
+
+```java
+try {
+    NbtIo.writeCompressed(compoundtag, file.toPath());
+} catch (IOException ioexception) {
+    LOGGER.error("Could not save data {}", this, ioexception);
+}
+```
+
+即只打一行 `error` 日志。结果是**每次保存都静默失败、数据永不落盘，而游戏表面上一切正常**，极难排查。因此本模组必须使用平铺的单段文件名，不要试图放进 `data/boss_respawner/` 之类的子目录。
+
+对备份与迁移的影响：
+
+- **一个文件承载所有维度**：下界、末地、模组维度的 Home 位置与待放置任务都在这一个文件里（这正是选择主世界存储的目的）。备份 `saves/<存档名>/data/` 即可，不需要另外处理 `DIM-1/data/` 或其他维度目录。
+- **随存档走**：换存档即换数据，删存档则数据一并消失。这也保证了 UUID → Home 的映射不会跨存档串味。
+- **删除该文件的后果**：全部 Home 记录**和全部待放置任务**一并丢失。已登记的 Boss 会在下次区块加载时按「首次观察」重新登记（位置为当时所在处，可能不是原出生点），但 defer 任务**无法恢复**。
+
 建议 Java 数据结构：
 
 ```text
 Map<UUID, HomeRecord>
-Map<TaskId, PendingPlacementTask>
+Map<TaskDedupKey, PendingPlacementTask>                    // 去重键见 §5.3.3
+Map<ResourceKey<Level>, Map<Long, Set<TaskDedupKey>>>      // (维度, ChunkPos) → 任务索引
 ```
+
+`TaskDedupKey` 即 §5.3.3 定义的 `(targetDimension, targetBase)`。
+
+**区块索引是必需项，不是优化项。** `ChunkEvent.Load` 是极高频事件（玩家飞行时每分钟可达数千次），而任务永不自动过期、数量只增不减。若每次区块加载都遍历全部任务来判断「有没有我的活」，开销为 O(任务数) × 极高的调用频率，会随世界规模持续恶化。按 `(维度, ChunkPos)` 建索引后，单次查找为 O(1)。
 
 `HomeRecord` 至少包含：
 
@@ -340,11 +435,10 @@ BlockPos homePos
 `PendingPlacementTask` 至少包含：
 
 ```text
-UUID taskId
-UUID sourceEntityUuid
+ResourceKey<Level> targetDimension          // 去重键前半
+BlockPos targetBase                         // 去重键后半
+UUID lastSourceEntityUuid                   // 最近一次触发该任务的死亡实体，仅作信息字段
 ResourceLocation entityType
-ResourceKey<Level> targetDimension
-BlockPos targetBase
 HomeRecord homeSnapshot
 PlacementRuleSnapshot placementSnapshot
 ActivationRuleSnapshot activationSnapshot
@@ -353,7 +447,7 @@ DuplicateRuleSnapshot duplicateSnapshot
 long createdGameTime
 ```
 
-待放置任务保存完整规则快照，保证 `/reload` 或服务器重启后仍按死亡当时的规则执行。
+待放置任务保存完整规则快照，保证 `/reload` 或服务器重启后仍按死亡当时的规则执行（去重合并时以最近一次死亡为准）。
 
 建议额外保留数据格式版本，当前值为 `1`：
 
@@ -363,13 +457,16 @@ int dataVersion
 
 读取高于当前支持版本的数据时，拒绝解析该数据文件并输出警告，不按低版本强行读取。
 
+**并且必须同时拒绝写回该文件。** 若只拒绝解析而把数据视为空，下一次自动保存就会用空数据覆盖新版本写入的文件，使一次降级造成不可逆的数据丢失。建议在拒绝解析后将该文件改名备份（例如 `<name>.dat.unsupported-<version>`）并停止对其写入，或以只读方式跳过。
+
 保存规则：
 
 - 新增记录后调用 `setDirty()`；
 - 读取损坏记录时跳过单条记录并输出警告，不让整个世界加载失败；
 - 不把实体对象、EntityType 对象或第三方 NBT 写入 SavedData；
 - 只保存 Registry ID、UUID、维度、坐标和规则快照；
-- 待放置任务不设置自动过期时间，并且必须去重。
+- 待放置任务不设置自动过期时间，但必须按 §5.3.3 的去重键去重，否则会无界增长；
+- 目标维度不可用时不得创建待放置任务（见 §5.3.1）。
 
 ### 6.1 Home 记录生命周期
 
@@ -378,8 +475,10 @@ int dataVersion
 | 实体加入世界 | `registerIfAbsent(uuid, ...)`，已有记录不覆盖 |
 | Home 模式死亡且重生笼成功放置 | 重生笼保存 Home 快照后，删除死亡实体 UUID 记录 |
 | 放置失败或进入 defer 队列 | 保留死亡实体记录，直到最终放置成功 |
+| defer 任务因去重被合并 | 删除**被合并那次死亡**的 UUID 记录；任务快照以最近一次死亡为准 |
+| 目标维度不可用导致放置永久失败 | 删除该实体 UUID 记录，不再重试，避免永久残留 |
 | 重生笼成功创建实体 | 为新 UUID 登记原始 Home，且登记发生在 `addFreshEntity` 之前 |
-| 重生笼生成失败 | 不创建新 UUID 记录 |
+| 重生笼生成失败 | 不创建新 UUID 记录，并清理可能已写入的临时登记 |
 
 删除旧 UUID 后，重生笼方块实体中的 Home 快照成为后续重生链路的来源。
 
@@ -476,7 +575,10 @@ src/main/resources/data/**/boss_respawner/entries/*.json
 
 - 安装本模组前已经移动过的旧 Boss，首次登记位置可能不是历史出生点。
 - Boss 换阶段生成新 UUID 时，只有通过本模组重生笼生成的实体能可靠继承 Home；第三方自行替换实体不在本次范围内。
-- 强制放置会忽略 `avoid_blocks`，但永远不能覆盖全局或规则 `protected_blocks`。
-- 未加载目标区块时不会同步加载，而是永久保留持久化 defer 任务。
+- **无 Home 记录时不会生成重生笼**：若某实体在任何时刻都未被本模组观察到（例如规则在其实体已加载之后才通过 `/reload` 添加，且补登记未覆盖），该实体死亡时不会放置重生笼，也不会回退到死亡位置。§7.3 的补登记与 §5.2 的警告日志就是为了让这种情况既罕见又可定位。
+- 强制放置会忽略 `avoid_blocks`，但永远不能覆盖全局或规则 `protected_blocks`。除此之外它会**替换目标位置上的普通方块**：迟到的 defer 任务可能在玩家已改造过的位置落位，而重生笼方块为 `strength(-1.0F, ...)`，在生存模式下**不可破坏**，误放无法由玩家自行清除。规则作者应据此谨慎设置 `placement.home.offset`。
+- 未加载目标区块时不会同步加载，而是永久保留持久化 defer 任务。任务规模由去重键 `(targetDimension, targetBase)` 界定，即与「出现过的放置目标数」成正比，而不是与历史死亡总数成正比。
+- 目标维度不可用时立即失败并清理该实体的 Home 记录，因此不会因为维度被移除而留下永远无法完成的任务。
 - 同一 Home 使用固定坐标强制放置且允许多笼时，相同坐标最终只能保留一个方块实体。
 - SavedData 的 `setDirty()` 依赖正常世界保存流程，不提供每次登记立即落盘的事务保证。
+- 若数据文件的 `dataVersion` 高于本模组支持的版本，本模组会拒绝读写该文件；降级后新版本写入的 Home 数据与待放置任务不可用（但不会被覆盖破坏）。

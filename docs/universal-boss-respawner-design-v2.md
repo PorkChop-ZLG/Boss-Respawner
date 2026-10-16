@@ -1,7 +1,16 @@
 # 通用 Boss 重生笼 设计文档 v2
 
+> **⚠️ 历史版本（已废弃）**
+>
+> 本文档描述的是 **schema v1** 的扁平 `placement` 结构与已移除的全局配置项
+> （`forcePlaceOnNoSafeSpot`、`foreignCageBlockIds`），**不再反映当前实现**。
+>
+> 当前有效的设计基线是 [`home-respawn-design.md`](home-respawn-design.md)，
+> 面向使用者的说明见 [`README.md`](../README.md)。
+> 迁移旧数据包时请参考 README 的「从 schema v1 迁移」对照表。
+
 **日期：** 2026-09-05  
-**状态：** 替代初版设计中的“HomePos 解析 / visual 配置 / 每区块限制”
+**状态：** 已被 `home-respawn-design.md` 取代
 
 ---
 

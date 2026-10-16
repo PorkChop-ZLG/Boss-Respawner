@@ -17,10 +17,14 @@
 7. `placement.mode` 是 Schema v2 必填字段，不要给解析器添加隐式默认值。
 8. `force_place` 可以绕过 `avoid_blocks`，但不能绕过全局或规则 `protected_blocks`。
 9. 目标区块未加载时统一 defer，不新增 `unloaded_target` JSON 字段，不执行同步写入。
-10. 遵循现有 Java 21、NeoForge 1.21.1 和 Gradle 风格。
-11. 修改前先查看工作区状态，不要覆盖用户已有的无关改动。
-12. 生产代码改动应有对应测试或 GameTest/可重复验证路径。
-13. 完成前必须运行新鲜的编译、测试和资源结构检查，并报告失败项。
+10. **目标维度不可用必须与目标区块未加载分开**：`server.getLevel(targetDimension) == null` 时立即失败并清理记录，不得创建待放置任务。
+11. **`ChunkEvent.Load` 只能作为触发信号**：回调中不得调用任何世界写入接口，实际放置必须延后到当前区块加载流程之外的后续 tick。
+12. defer 任务按 `(targetDimension, targetBase)` 去重，并按 `(维度, ChunkPos)` 建立索引；不得每次区块加载都遍历全部任务。
+13. 执行 defer 任务时必须用任务快照重跑完整放置流程，不得绕过 `search_failure_fallback: false`。
+14. 遵循现有 Java 21、NeoForge 1.21.1 和 Gradle 风格。
+15. 修改前先查看工作区状态，不要覆盖用户已有的无关改动。
+16. 生产代码改动应有对应测试或 GameTest/可重复验证路径。
+17. 完成前必须运行新鲜的编译、测试和资源结构检查，并报告失败项。
 
 ## 二、必须修改的功能范围
 
@@ -77,26 +81,31 @@
 
 1. 使用世界级 `SavedData` 保存 UUID 到 Home 位置的映射。
 2. 数据挂在 Overworld 的 `DimensionDataStorage`，因为记录包含跨维度位置。
-3. 文件名建议使用 `boss_respawner_homes`。
-4. 记录至少包含：UUID、实体类型 ID、维度 ID、BlockPos。
-5. 同一 SavedData 中增加持久化待放置任务，或使用独立但同等可靠的 SavedData。
-6. 待放置任务至少保存：任务 ID、来源 UUID、实体类型、目标维度、目标坐标、Home 快照、放置规则快照、激活/生成/重复规则快照、创建时间。
-7. 未加载目标区块时创建或更新任务，任务不设置自动过期时间，服务器重启后仍保留。
-8. 任务必须去重，避免同一死亡事件重复创建。
-9. 提供以下明确操作：
-   - `get(UUID)`
-   - `contains(UUID)`
-   - `registerIfAbsent(...)`
-   - `registerOrReplace(...)` 或等价的重生继承方法
-   - `remove(UUID)`
-   - `enqueuePendingPlacement(...)`
-   - `removePendingPlacement(...)`
-   - `setDirty()` 封装
-10. UUID 已存在时，普通登记不能覆盖旧位置。
-11. 重生笼继承原始 Home 时必须能够覆盖新 UUID 的临时记录。
-12. NBT 读写使用稳定字段名并做类型校验。
-13. 建议使用 `dataVersion = 1`；读取更高版本时拒绝并警告，单条坏记录跳过并警告。
-14. 不保存实体对象、第三方 NBT 或运行时引用。
+3. 文件名使用 `boss_respawner_homes`，落点为 `saves/<存档名>/data/boss_respawner_homes.dat`。
+4. **`name` 中不得包含 `/` 或 `\`**：`DimensionDataStorage` 不会创建子目录，而 `SavedData.save` 对写入失败只打一行 `Could not save data` 的 error 日志，会导致每次保存静默失败、数据永不落盘。必须使用平铺的单段文件名，不要放进 `data/boss_respawner/` 之类的子目录。
+5. 记录至少包含：UUID、实体类型 ID、维度 ID、BlockPos。
+6. 同一 SavedData 中增加持久化待放置任务，或使用独立但同等可靠的 SavedData。
+7. 待放置任务至少保存：**目标维度 + 目标坐标**（二者构成去重键）、最近来源 UUID、实体类型、Home 快照、放置规则快照、激活/生成/重复规则快照、创建时间。
+8. **目标维度不可用**（`server.getLevel(dimension) == null`）时不得创建任务：立即失败、输出 `error`，并删除该实体的 Home 记录。
+9. 维度可用但未加载目标区块时创建或更新任务，任务不设置自动过期时间，服务器重启后仍保留。
+10. 任务去重键为 `(targetDimension, targetBase)`；`lastSourceEntityUuid` 仅作信息字段。去重合并时删除被合并那次死亡的 Home 记录，规则快照以最近一次死亡为准。
+11. 必须为任务建立 `(维度, ChunkPos)` 索引，使区块加载时的查找为 O(1)，不得遍历全部任务。
+12. 提供以下明确操作：
+    - `get(UUID)`
+    - `contains(UUID)`
+    - `registerIfAbsent(...)`
+    - `registerOrReplace(...)` 或等价的重生继承方法
+    - `remove(UUID)`
+    - `enqueuePendingPlacement(...)`
+    - `removePendingPlacement(...)`
+    - `pendingForChunk(dimension, chunkPos)` 或等价的索引查询
+    - `setDirty()` 封装
+13. UUID 已存在时，普通登记不能覆盖旧位置。
+14. 重生笼继承原始 Home 时必须能够覆盖新 UUID 的临时记录。
+15. NBT 读写使用稳定字段名并做类型校验。
+16. 建议使用 `dataVersion = 1`；读取更高版本时拒绝并警告，单条坏记录跳过并警告。
+17. **拒绝解析更高版本 `dataVersion` 时必须同时拒绝写回该文件**（改名备份或只读跳过），否则下一次自动保存会用空数据覆盖新版本数据，造成不可逆丢失。
+18. 不保存实体对象、第三方 NBT 或运行时引用。
 
 **建议数据字段：**
 
@@ -142,11 +151,13 @@ Z
 2. 保存字段不能依赖第三方实体 NBT。
 3. 旧的死亡点重生笼仍然可以加载和工作；缺少 Home 字段时按旧快照行为处理。
 4. Home 模式死亡后，重生笼成功放置时才删除死亡 UUID 的 Home 记录；进入 defer 或放置失败时保留记录。
-5. 重生笼生成实体时，先 `type.create()` 取得新 UUID，再在 `addFreshEntity` 前将其绑定到保存的原始 Home。
-6. 加入世界失败时清理刚创建的新 UUID 记录。
-7. 不要把新实体实际生成位置登记成 Home。
-8. 如果 `count > 1`，同一批生成的实体都继承同一个 Home。
-9. 如果生成失败，不创建错误的 Home 记录。
+5. defer 任务因去重被合并时，删除被合并那次死亡的 UUID 记录。
+6. 目标维度不可用导致放置永久失败时，删除该实体 UUID 记录。
+7. 重生笼生成实体时，先 `type.create()` 取得新 UUID，再在 `addFreshEntity` 前将其绑定到保存的原始 Home。
+8. 加入世界失败时清理刚创建的新 UUID 记录。
+9. 不要把新实体实际生成位置登记成 Home。
+10. 如果 `count > 1`，同一批生成的实体都继承同一个 Home。
+11. 如果生成失败，不创建错误的 Home 记录。
 
 ### Task 5：重构放置解析与 defer 队列
 
@@ -170,14 +181,19 @@ Z
 9. 搜索失败且 `search_failure_fallback: true` 时，目标区块已加载才使用同一个 `base` 执行强制放置。
 10. 搜索失败且 `search_failure_fallback: false` 时，不放置并输出 `warn`。
 11. Home 搜索失败不能切换到 Death 搜索。
-12. 目标区块未加载时，任何模式都必须创建或更新持久化 defer 任务，不能调用会触发区块加载的写入接口。
-13. 区块真正加载后，安全地重试对应任务；成功后删除任务，任务不设置自动过期时间。
-14. 强制放置忽略 `require_ground`、`avoid_fluids`、`avoid_blocks`，但不能忽略全局或规则 `protected_blocks`。
-15. 保护检查至少覆盖目标位置和目标位置下方。
-16. `avoid_blocks` 只用于搜索候选位置。
-17. 普通搜索遇到已有本模组重生笼时继续寻找其他候选位置。
-18. `force_place` 固定坐标与 `allow_multiple` 同时使用时，允许后放置者覆盖同坐标旧笼；文档和日志应明确这一限制。
-19. 保留现有 `duplicate.mode` 行为。
+12. **区分目标维度不可用与目标区块未加载**：`server.getLevel(targetDimension) == null` 时立即失败、输出 `error`、**不创建待放置任务**，并删除该实体的 Home 记录；只有维度可用且 `level.isLoaded(base)` 为 `false` 时才进入 defer。
+13. 目标区块未加载时，任何模式都必须创建或更新持久化 defer 任务，且不能调用会触发区块加载的写入接口。
+14. 任务去重键为 `(targetDimension, targetBase)`；合并时清理被合并那次死亡的 Home 记录。
+15. 执行 defer 任务时必须用任务中保存的规则快照**重跑完整放置流程**（搜索 → 按 `search_failure_fallback` 决定是否强制放置）。不得因为「已经等待很久」就直接强制放置，也不得绕过 `search_failure_fallback: false`。
+16. `ChunkEvent.Load`（或等价事件）只作为触发信号：回调中**不得调用任何世界写入接口**，只更新待执行标记或加入待执行集合；实际放置必须延后到当前区块加载流程之外的后续 tick（例如 `server.execute(...)`，或在 `ServerTickEvent` 中消费待执行列表）。
+17. 任务成功后删除；任务不设置自动过期时间。
+18. 必须按 `(维度, ChunkPos)` 索引任务，使单次区块加载的查找为 O(1)，不得遍历全部任务。
+19. 强制放置忽略 `require_ground`、`avoid_fluids`、`avoid_blocks`，但不能忽略全局或规则 `protected_blocks`。
+20. 保护检查至少覆盖目标位置和目标位置下方。
+21. `avoid_blocks` 只用于搜索候选位置。
+22. 普通搜索遇到已有本模组重生笼时继续寻找其他候选位置。
+23. `force_place` 固定坐标与 `allow_multiple` 同时使用时，允许后放置者覆盖同坐标旧笼；文档和日志应明确这一限制。
+24. 保留现有 `duplicate.mode` 行为。
 
 ### Task 6：清理 Config.java
 
@@ -256,11 +272,18 @@ src/main/resources/data/**/boss_respawner/entries/*.json
 2. 说明 `death` 和 `home` 两种模式。
 3. 说明内置规则默认显式使用 `home`，解析器不隐式补默认模式。
 4. 说明 `search_failure_fallback` 默认是 `true`。
-5. 说明目标区块未加载时统一持久化 defer，不提供 JSON 字段选择。
+5. 说明目标区块未加载时统一持久化 defer，不提供 JSON 字段选择；目标维度不可用时立即失败。
 6. 说明强制放置忽略 `avoid_blocks`，但不能覆盖保护方块。
-7. 说明 Home 来源是本模组 SavedData，不是第三方实体 NBT。
-8. 说明旧数据包不兼容是有意的版本变更。
-9. 无 Home 记录时的日志必须包含实体 ID、UUID、死亡维度和死亡坐标，并提示检查规则加载或 `/reload`。
+7. 说明强制放置会替换目标位置上的普通方块，且重生笼方块在生存模式下不可破坏，误放无法由玩家自行清除。
+8. 说明 Home 来源是本模组 SavedData，不是第三方实体 NBT。
+9. 说明旧数据包不兼容是有意的版本变更，并给出 **v1 → v2 字段迁移对照表**，至少覆盖：
+   - `schema_version`：`1` → `2`；
+   - `placement.<扁平字段>` → `placement.death.<字段>` 或 `placement.home.<字段>`；
+   - `placement.mode` 成为必填；
+   - 全局 `forcePlaceOnNoSafeSpot` → `placement.<mode>.search_failure_fallback`；
+   - 全局 `foreignCageBlockIds` → `placement.<mode>.avoid_blocks`，并说明新增的全局 `PROTECTED_BLOCK_IDS` 与规则级 `protected_blocks`。
+10. 说明 defer 任务按放置目标去重，且其规模与「出现过的放置目标数」成正比。
+11. 无 Home 记录时的日志必须包含实体 ID、UUID、死亡维度和死亡坐标，并提示检查规则加载或 `/reload`。
 
 ## 三、测试与验收标准
 
@@ -277,6 +300,9 @@ src/main/resources/data/**/boss_respawner/entries/*.json
 - 非法模式拒绝；
 - SavedData 记录序列化和反序列化；
 - 待放置任务序列化、去重和重启恢复；
+- 去重键 `(targetDimension, targetBase)` 的合并行为，以及合并时清理被合并死亡的 Home 记录；
+- 目标维度不可用时不创建任务并清理 Home 记录；
+- 拒绝更高 `dataVersion` 时不做写回；
 - 已有 UUID 不被普通登记覆盖；
 - 重生继承可以在加入世界前写入新 UUID；
 - 保护方块阻止强制放置；
@@ -323,6 +349,13 @@ gradlew.bat test
 12. 重生实体在 `addFreshEntity` 前继承原始 Home，不以新生成位置建立 Home。
 13. 重生笼成功放置后删除旧 UUID 记录，失败时保留。
 14. 删除全局强制放置和旧全局避让列表后，规则仍能独立决定普通搜索行为。
+15. 目标维度不可用时立即失败并清理 Home 记录，且**不产生**待放置任务。
+16. defer 任务按 `(targetDimension, targetBase)` 去重：同一放置目标的多次死亡只保留一条任务。
+17. `ChunkEvent.Load` 回调执行期间**没有发生任何世界写入**；实际放置发生在之后的 tick。
+18. defer 任务执行时重跑完整放置流程：`search_failure_fallback: false` 的规则不会因为 defer 而被强制放置。
+19. 区块加载时的任务查找不遍历全部任务（构造大量任务验证为 O(1) 查找）。
+20. `dataVersion` 高于支持版本时，文件既不被解析也不被覆盖写回。
+21. `replace_existing` 在 defer 场景下不会从区块加载回调内部触发相邻区块的写入。
 
 ## 四、交付格式
 
