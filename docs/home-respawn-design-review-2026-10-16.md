@@ -344,7 +344,7 @@ public void save() {
 
 - [`home-respawn-design.md:242`](home-respawn-design.md#L242)：数据结构 `Map<UUID, HomeRecord>`
 - [`home-respawn-design.md:75-89`](home-respawn-design.md#L75-L89)：重生后新 UUID 继承 Home（即每次重生 +1 条记录）
-- [`DimensionDataStorage.java:135-138`](../build/tmp-review/net/minecraft/world/level/storage/DimensionDataStorage.java#L135-L138)：整表重写
+- `build/tmp-review/net/minecraft/world/level/storage/DimensionDataStorage.java#L135-L138`（`DimensionDataStorage.java:135-138`）：整表重写
 
 #### 建议修改
 

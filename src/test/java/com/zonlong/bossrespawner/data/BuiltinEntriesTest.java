@@ -13,8 +13,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -32,8 +34,11 @@ class BuiltinEntriesTest {
 
     private static final Path ENTRIES_ROOT = TestPaths.dataPackRoot();
 
-    /** The 18 entries shipped with the mod. */
-    private static final int EXPECTED_ENTRY_COUNT = 18;
+    /** The built-in entries shipped with the mod: 18 original + 5 Bosses Rise + 9 Twilight Forest. */
+    private static final int EXPECTED_ENTRY_COUNT = 32;
+
+    /** Namespaces that went through the schema v1 -> v2 migration, used by the fidelity checks below. */
+    private static final List<String> MIGRATED_NAMESPACES = List.of("legendary_monsters", "mowziesmobs");
 
     private record Loaded(Path file, JsonObject json, RespawnEntry entry) {
         String name() {
@@ -150,17 +155,80 @@ class BuiltinEntriesTest {
             assertFalse(home.get("force_place").getAsBoolean(), loaded.name() + ": force_place");
             assertTrue(home.get("search_failure_fallback").getAsBoolean(),
                     loaded.name() + ": search_failure_fallback");
-            assertTrue(home.getAsJsonArray("protected_blocks").isEmpty(),
-                    loaded.name() + ": protected_blocks is provided globally for Cataclysm");
-            assertTrue(home.getAsJsonArray("avoid_blocks").size() > 0,
+            assertFalse(stringArray(home, "protected_blocks").contains("cataclysm:boss_respawner"),
+                    loaded.name() + ": Cataclysm protection comes from the global protectedBlockIds list, "
+                            + "so a rule must not duplicate it in protected_blocks");
+            assertFalse(stringArray(home, "avoid_blocks").isEmpty(),
                     loaded.name() + ": the previous global avoidance list must be migrated explicitly");
         }
     }
 
     @Test
+    @DisplayName("every Twilight Forest entry protects that mod's chest blocks")
+    void twilightForestEntriesProtectChests() throws IOException {
+        // Twilight Forest delivers boss loot through chests (its Dark Tower boss chest even holds the
+        // Ur-Ghast trophy) and fills boss arenas with chests, so a respawn cage must never overwrite one.
+        //
+        // The chests live in protected_blocks only. The code makes protected_blocks also filter the
+        // placement SEARCH (PlacementResolver), so a candidate sitting on a chest is skipped and relocated
+        // rather than selected and then refused. Duplicating the list into avoid_blocks is therefore
+        // unnecessary - see PlacementResolverTest for the membership semantics that make this work.
+        List<String> twilightForestChests = List.of(
+                "twilightforest:canopy_chest", "twilightforest:canopy_trapped_chest",
+                "twilightforest:dark_chest", "twilightforest:dark_trapped_chest",
+                "twilightforest:mangrove_chest", "twilightforest:mangrove_trapped_chest",
+                "twilightforest:mining_chest", "twilightforest:mining_trapped_chest",
+                "twilightforest:skull_chest",
+                "twilightforest:sorting_chest", "twilightforest:sorting_trapped_chest",
+                "twilightforest:time_chest", "twilightforest:time_trapped_chest",
+                "twilightforest:transformation_chest", "twilightforest:transformation_trapped_chest",
+                "twilightforest:twilight_oak_chest", "twilightforest:twilight_oak_trapped_chest");
+
+        int checked = 0;
+        for (Loaded loaded : loadAll()) {
+            if (!loaded.file().toString().contains("twilightforest")) {
+                continue;
+            }
+            checked++;
+            JsonObject home = loaded.json().getAsJsonObject("placement").getAsJsonObject("home");
+
+            List<String> missingFromProtected = twilightForestChests.stream()
+                    .filter(id -> !stringArray(home, "protected_blocks").contains(id)).toList();
+            assertTrue(missingFromProtected.isEmpty(),
+                    loaded.name() + ": protected_blocks is missing " + missingFromProtected);
+
+            // avoid_blocks stays a plain search-preference list; the chests must NOT be duplicated there.
+            List<String> chestsInAvoid = stringArray(home, "avoid_blocks").stream()
+                    .filter(twilightForestChests::contains).toList();
+            assertTrue(chestsInAvoid.isEmpty(),
+                    loaded.name() + ": chests must not be duplicated into avoid_blocks, got " + chestsInAvoid);
+
+            assertTrue(stringArray(home, "avoid_blocks").contains("cataclysm:boss_respawner"),
+                    loaded.name() + ": the migrated Cataclysm avoidance entry must survive");
+        }
+        assertEquals(9, checked, "expected all nine Twilight Forest entries to be checked");
+    }
+
+    /** Reads a JSON string array into a list; missing arrays yield an empty list. */
+    private static List<String> stringArray(JsonObject owner, String key) {
+        List<String> values = new ArrayList<>();
+        if (owner.has(key) && owner.get(key).isJsonArray()) {
+            for (JsonElement element : owner.getAsJsonArray(key)) {
+                values.add(element.getAsString());
+            }
+        }
+        return values;
+    }
+
+    @Test
     @DisplayName("migration preserved the per-file variations instead of flattening them")
     void migrationPreservedVariations() throws IOException {
-        List<Loaded> loaded = loadAll();
+        // Scoped to the namespaces that actually went through the v1 -> v2 migration, so adding support for
+        // another mod later does not invalidate this check.
+        List<Loaded> loaded = loadAll().stream()
+                .filter(l -> MIGRATED_NAMESPACES.stream().anyMatch(ns -> l.file().toString().contains(ns)))
+                .toList();
+        assertEquals(18, loaded.size(), "expected the two originally migrated namespaces");
 
         List<String> notRequiringGround = loaded.stream()
                 .filter(l -> !l.entry().placement().requireGround())
@@ -174,6 +242,53 @@ class BuiltinEntriesTest {
                 .filter(l -> "allow_multiple".equals(l.entry().duplicate().mode())).count();
         assertEquals(6, keepExisting, "entries using keep_existing");
         assertEquals(12, allowMultiple, "entries using allow_multiple");
+    }
+
+    @Test
+    @DisplayName("the new mod entries all use their agreed shared, pre-fight key item")
+    void newModEntriesUseSharedKeys() throws IOException {
+        // Design rule: a key must be obtainable BEFORE fighting the boss, so a boss drop can never be used.
+        // Both new mods therefore share one scarce pre-fight item across all of their bosses.
+        for (Loaded loaded : loadAll()) {
+            String path = loaded.file().toString().replace('\\', '/');
+            String expectedKey = null;
+            if (path.contains("/data/twilightforest/")) {
+                expectedKey = "twilightforest:magic_map_focus";
+            } else if (path.contains("/data/block_factorys_bosses/")) {
+                expectedKey = "block_factorys_bosses:ancient_trial_key";
+            }
+            if (expectedKey == null) {
+                continue;
+            }
+            assertEquals(expectedKey, loaded.entry().activation().item().toString(),
+                    loaded.name() + ": these entries intentionally share one pre-fight key item");
+            assertTrue(loaded.entry().activation().consume(),
+                    loaded.name() + ": the shared key must be consumed");
+        }
+    }
+
+    @Test
+    @DisplayName("every Bosses Rise and Twilight Forest boss has an entry")
+    void newModCoverageIsComplete() throws IOException {
+        List<Loaded> loaded = loadAll();
+        assertEquals(9, loaded.stream().filter(l -> l.file().toString().contains("twilightforest")).count(),
+                "8 progression bosses plus the Quest Ram");
+        assertEquals(5, loaded.stream().filter(l -> l.file().toString().contains("block_factorys_bosses")).count(),
+                "5 named bosses in Bosses Rise 2.1.2 (incl. Nerakyss, the Kraken)");
+
+        List<String> expected = new java.util.ArrayList<>(List.of(
+                "twilightforest:naga", "twilightforest:lich", "twilightforest:minoshroom",
+                "twilightforest:hydra", "twilightforest:knight_phantom", "twilightforest:ur_ghast",
+                "twilightforest:alpha_yeti", "twilightforest:snow_queen", "twilightforest:quest_ram",
+                "block_factorys_bosses:infernal_dragon", "block_factorys_bosses:sandworm",
+                "block_factorys_bosses:underworld_knight", "block_factorys_bosses:yeti",
+                "block_factorys_bosses:kraken"));
+        List<String> actual = loaded.stream()
+                .map(l -> l.entry().entities().get(0).toString())
+                .filter(id -> id.startsWith("twilightforest:") || id.startsWith("block_factorys_bosses:"))
+                .sorted().toList();
+        expected.sort(String::compareTo);
+        assertEquals(expected, actual);
     }
 
     @Test
@@ -196,7 +311,18 @@ class BuiltinEntriesTest {
             for (JsonElement element : home.getAsJsonArray("avoid_blocks")) {
                 rawAvoid.add(element.getAsString());
             }
-            assertEquals(rawAvoid, placement.avoidBlocks(), name + ": avoid_blocks");
+            // The rule stores parsed ResourceLocations; compare as values, not as raw strings.
+            Set<ResourceLocation> expectedAvoid = new HashSet<>();
+            for (String value : rawAvoid) {
+                expectedAvoid.add(ResourceLocation.parse(value));
+            }
+            assertEquals(expectedAvoid, placement.avoidBlocks(), name + ": avoid_blocks");
+
+            Set<ResourceLocation> expectedProtected = new HashSet<>();
+            for (JsonElement element : home.getAsJsonArray("protected_blocks")) {
+                expectedProtected.add(ResourceLocation.parse(element.getAsString()));
+            }
+            assertEquals(expectedProtected, placement.protectedBlocks(), name + ": protected_blocks");
 
             JsonObject duplicate = loaded.json().getAsJsonObject("duplicate");
             assertEquals(duplicate.get("mode").getAsString(), loaded.entry().duplicate().mode(), name);

@@ -4,7 +4,9 @@
 
 生物/Boss 死亡后，可按照 JSON 配置在指定锚点生成“重生笼”；玩家使用指定物品右键激活后，重生笼会重新召唤该生物。
 
-本模组的目的，是优化多人游戏下的Boss战体验，使得每个玩家在找到Boss结构后，都有Boss可以打，不用担心Boss被挑战完了后，需要重新寻找。
+本模组的目的，是将大部分模组的一次性Boss，改造成可再生的Boss，并且搜集特定的复活物品，增加一些冷门道具的用途。
+
+同时优化多人游戏下的Boss战体验，使得每个玩家在找到Boss结构后，都有Boss可以打，不用担心Boss被挑战完了后，需要重新寻找。
 
 - **Mod名：** `通用Boss重生笼`
 - **ModID：** `boss_respawner`
@@ -73,6 +75,41 @@
 | 太阳鸟-乌姆武提 | `mowziesmobs:umvuthi` | 飞蛇毒牙 | `mowziesmobs:naga_fang` |
 | 雕刻家-通臂大师 | `mowziesmobs:sculptor` | 泥峭棒 | `mowziesmobs:bluff_rod` |
 > 注：Mowzie的生物 没有对应的眼球物品，暂时使用其他生物的掉落物。
+
+### 首领崛起（Bosses Rise）
+
+| Boss | 实体 ID | 复活物品 | 物品 ID |
+|---|---|---|---|
+| 阿什洛德，炼狱飞龙 | `block_factorys_bosses:infernal_dragon` | 远古试炼钥匙 | `block_factorys_bosses:ancient_trial_key` |
+| 斯洛克，巨型沙虫 | `block_factorys_bosses:sandworm` | 远古试炼钥匙 | `block_factorys_bosses:ancient_trial_key` |
+| 赫尔瓦，冥界骑士 | `block_factorys_bosses:underworld_knight` | 远古试炼钥匙 | `block_factorys_bosses:ancient_trial_key` |
+| 斯科尔，霜冻雪怪 | `block_factorys_bosses:yeti` | 远古试炼钥匙 | `block_factorys_bosses:ancient_trial_key` |
+| Nerakyss，海怪 | `block_factorys_bosses:kraken` | 远古试炼钥匙 | `block_factorys_bosses:ancient_trial_key` |
+> 注：CurseForge 项目名叫 `bossesrise`，但**模组 ID 是 `block_factorys_bosses`**，数据包目录必须用它。
+> 注：海怪在官方 `zh_cn` 中**完全没有翻译**（实体、物品、字幕都只有英文），游戏内会显示 `Nerakyss, The Kraken`。
+> 注：本模组 5 个 Boss 的掉落物全部是"打完才有"，不满足复活钥匙要求，因此统一使用**无配方的远古试炼钥匙**（来自冥界竞技场的试炼刷怪笼宝箱）。
+
+### 暮色森林（Twilight Forest）
+
+| Boss | 实体 ID | 复活物品 | 物品 ID |
+|---|---|---|---|
+| 娜迦 | `twilightforest:naga` | 魔法地图核心 | `twilightforest:magic_map_focus` |
+| 巫妖 | `twilightforest:lich` | 魔法地图核心 | `twilightforest:magic_map_focus` |
+| 米诺菇 | `twilightforest:minoshroom` | 魔法地图核心 | `twilightforest:magic_map_focus` |
+| 九头蛇 | `twilightforest:hydra` | 魔法地图核心 | `twilightforest:magic_map_focus` |
+| 幻影骑士 | `twilightforest:knight_phantom` | 魔法地图核心 | `twilightforest:magic_map_focus` |
+| 暮初恶魂 | `twilightforest:ur_ghast` | 魔法地图核心 | `twilightforest:magic_map_focus` |
+| 雪怪首领 | `twilightforest:alpha_yeti` | 魔法地图核心 | `twilightforest:magic_map_focus` |
+| 冰雪女王 | `twilightforest:snow_queen` | 魔法地图核心 | `twilightforest:magic_map_focus` |
+| 谜题羊 | `twilightforest:quest_ram` | 魔法地图核心 | `twilightforest:magic_map_focus` |
+> 注：暮色森林为 8 个主线 Boss 各做了一个**专属奖杯**，但它们全是"打完才有"的掉落物，不满足复活钥匙要求，因此统一使用可合成的**魔法地图核心**。
+> 注：该模组的 Boss 战利品可能通过**箱子**发放（`darktower_boss.json` 就是一个装着暮初恶魂整套战利品的箱子表），且 Boss 场地遍布箱子，因此这 9 个条目把该模组全部 **17 种箱子**写进了 `protected_blocks`。
+> 注：`protected_blocks` **同时参与放置搜索的候选过滤**（不只是写入前的底线），所以搜索会绕开箱子去找别的位置，而不是"选中后放弃"导致笼子不出现。
+> 注：谜题羊是一次性任务 NPC，被击杀后任务将永久无法完成（它死亡不掉落任何东西），因此同样纳入。其自带的 `EnforcedHomePoint` 本模组**不会读取**，只在首次观察时登记自己的 home。
+
+### 钥匙选取原则
+
+本模组的用途是「某个 Boss 已被打掉，但其他玩家还没打」。因此复活钥匙必须**在打该 Boss 之前就能获得**——Boss 的掉落物天然不满足这个条件。上面两个模组因为无法为每个 Boss 都找到战前专属物品，采用了「多个 Boss 共用一件稀缺物品」的方案。详见 [`docs/bosses-rise-mapping.md`](docs/bosses-rise-mapping.md) 与 [`docs/twilight-forest-mapping.md`](docs/twilight-forest-mapping.md)。
 
 ## JSON 配置
 
@@ -446,5 +483,5 @@ gradlew.bat runClient
 
 - schema v2 的解析与各类拒绝路径（含 v1 扁平结构、缺失 `mode`、缺失模式对象、非法模式）；
 - `BossHomeSavedData` 的 NBT 往返、去重合并、区块索引与 `dataVersion` 拒绝策略；
-- 全部 18 个内置 JSON 的真实解析验证与字段默认值检查；
+- 全部 32 个内置 JSON 的真实解析验证与字段默认值检查；
 - 对已删除全局配置项的源码引用检查。

@@ -103,7 +103,8 @@ class AcceptanceDatapackTest {
         RespawnEntry overwriteEntry = parse(ENTRIES.resolve("04_force_place_overwrite.json")).orElseThrow();
         assertTrue(protectedEntry.placement().forcePlace() && overwriteEntry.placement().forcePlace(),
                 "both entries must force place, so the only difference is protection");
-        assertEquals(List.of("minecraft:chest"), protectedEntry.placement().protectedBlocks(),
+        assertEquals(java.util.Set.of(ResourceLocation.parse("minecraft:chest")),
+                protectedEntry.placement().protectedBlocks(),
                 "the protected entry must protect chests");
         assertTrue(overwriteEntry.placement().protectedBlocks().isEmpty(),
                 "the overwrite entry must protect nothing");

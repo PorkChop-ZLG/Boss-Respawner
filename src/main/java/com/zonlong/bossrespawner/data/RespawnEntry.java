@@ -8,8 +8,10 @@ import com.zonlong.bossrespawner.UniversalBossRespawner;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * One parsed {@code boss_respawner} JSON rule (schema v2).
@@ -227,7 +229,7 @@ public record RespawnEntry(
     public record PlacementRule(PlacementMode mode, int[] offset, boolean forcePlace,
                                 boolean searchFailureFallback, int searchDown, int searchUp,
                                 int horizontalRadius, boolean requireGround, boolean avoidFluids,
-                                List<String> avoidBlocks, List<String> protectedBlocks) {
+                                Set<ResourceLocation> avoidBlocks, Set<ResourceLocation> protectedBlocks) {
 
         /**
          * Parses {@code placement} and resolves the mode-specific object.
@@ -287,8 +289,37 @@ public record RespawnEntry(
                     Math.max(0, getInt(obj, "horizontal_radius", 4)),
                     getBoolean(obj, "require_ground", true),
                     getBoolean(obj, "avoid_fluids", false),
-                    List.copyOf(getStringList(obj, "avoid_blocks")),
-                    List.copyOf(getStringList(obj, "protected_blocks"))));
+                    parseBlockIds(entryId, obj, "avoid_blocks"),
+                    parseBlockIds(entryId, obj, "protected_blocks")));
+        }
+
+        /**
+         * Parses a block-ID list into an immutable {@link Set} once, at rule load time.
+         *
+         * <p>Runtime block checks then compare {@link ResourceLocation} values directly: O(1) lookup, no
+         * per-candidate {@code toString()} allocation, and no linear scan. (The old code did all three on
+         * every candidate of every placement search.)
+         *
+         * <p>Well-formed IDs for blocks that are not installed are kept — they simply never match, which is
+         * what compatibility lists need. Only malformed IDs are dropped, with a warning.
+         */
+        private static Set<ResourceLocation> parseBlockIds(ResourceLocation entryId, JsonObject obj, String key) {
+            List<String> raw = getStringList(obj, key);
+            if (raw.isEmpty()) {
+                return Set.of();
+            }
+            Set<ResourceLocation> ids = new HashSet<>(raw.size());
+            for (String value : raw) {
+                ResourceLocation id = ResourceLocation.tryParse(value);
+                if (id == null) {
+                    UniversalBossRespawner.LOGGER.warn(
+                            "Respawn entry {} has a malformed block id '{}' in {}; ignoring that entry",
+                            entryId, value, key);
+                } else {
+                    ids.add(id);
+                }
+            }
+            return Set.copyOf(ids);
         }
 
         /**

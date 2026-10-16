@@ -1,0 +1,65 @@
+{
+  "schema_version": 2,
+  "enabled": true,
+  "priority": 0,
+  "entity": "twilightforest:lich",
+  "activation": {
+    "item": "twilightforest:magic_map_focus",
+    "amount": 1,
+    "consume": true
+  },
+  "placement": {
+    "mode": "home",
+    "home": {
+      "offset": [0, 0, 0],
+      "force_place": false,
+      "search_failure_fallback": true,
+      "search_down": 32,
+      "search_up": 16,
+      "horizontal_radius": 4,
+      "require_ground": true,
+      "avoid_fluids": false,
+      "avoid_blocks": ["cataclysm:boss_respawner"],
+      "protected_blocks": [
+        "twilightforest:canopy_chest",
+        "twilightforest:canopy_trapped_chest",
+        "twilightforest:dark_chest",
+        "twilightforest:dark_trapped_chest",
+        "twilightforest:mangrove_chest",
+        "twilightforest:mangrove_trapped_chest",
+        "twilightforest:mining_chest",
+        "twilightforest:mining_trapped_chest",
+        "twilightforest:skull_chest",
+        "twilightforest:sorting_chest",
+        "twilightforest:sorting_trapped_chest",
+        "twilightforest:time_chest",
+        "twilightforest:time_trapped_chest",
+        "twilightforest:transformation_chest",
+        "twilightforest:transformation_trapped_chest",
+        "twilightforest:twilight_oak_chest",
+        "twilightforest:twilight_oak_trapped_chest"
+      ]
+    }
+  },
+  "death": {
+    "player_kill_only": false,
+    "dimensions": [],
+    "biomes": []
+  },
+  "spawn": {
+    "delay_ticks": 20,
+    "require_player_nearby": true,
+    "player_range": 9.0,
+    "allow_peaceful": false,
+    "count": 1,
+    "spawn_offset": [0, 0, 0],
+    "nbt": "",
+    "finalize_spawn": true,
+    "max_attempts": 20,
+    "retry_interval_ticks": 4
+  },
+  "duplicate": {
+    "mode": "allow_multiple",
+    "search_radius": 16
+  }
+}

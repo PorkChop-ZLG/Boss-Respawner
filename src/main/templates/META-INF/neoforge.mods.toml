@@ -110,6 +110,23 @@ description='''
     ordering="NONE"
     side="BOTH"
 
+# Optional Twilight Forest dependency for local testing/coexistence.
+# This mod is fully independent and does NOT require Twilight Forest at runtime.
+[[dependencies.${mod_id}]]
+    modId="twilightforest"
+    type="optional"
+    ordering="NONE"
+    side="BOTH"
+
+# Optional Bosses Rise dependency for local testing/coexistence.
+# CurseForge project name is "bossesrise", but the mod id is block_factorys_bosses.
+# This mod is fully independent and does NOT require Bosses Rise at runtime.
+[[dependencies.${mod_id}]]
+    modId="block_factorys_bosses"
+    type="optional"
+    ordering="NONE"
+    side="BOTH"
+
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares
 # that your mod requires GL version 3.2 or higher. Other features will be added. They are side aware so declaring this won't
 # stop your mod loading on the server for example.

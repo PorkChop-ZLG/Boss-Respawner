@@ -2,6 +2,12 @@ package com.zonlong.bossrespawner.data;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.resources.ResourceLocation;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Immutable snapshot of the rule fields a deferred placement needs in order to re-run the full
@@ -84,8 +90,8 @@ public record RespawnRuleSnapshot(
         tag.putInt("HorizontalRadius", rule.horizontalRadius());
         tag.putBoolean("RequireGround", rule.requireGround());
         tag.putBoolean("AvoidFluids", rule.avoidFluids());
-        BossHomeNbt.putStringList(tag, "AvoidBlocks", rule.avoidBlocks());
-        BossHomeNbt.putStringList(tag, "ProtectedBlocks", rule.protectedBlocks());
+        BossHomeNbt.putStringList(tag, "AvoidBlocks", toIdStrings(rule.avoidBlocks()));
+        BossHomeNbt.putStringList(tag, "ProtectedBlocks", toIdStrings(rule.protectedBlocks()));
         return tag;
     }
 
@@ -106,8 +112,35 @@ public record RespawnRuleSnapshot(
                 BossHomeNbt.requireInt(tag, "HorizontalRadius"),
                 tag.getBoolean("RequireGround"),
                 tag.getBoolean("AvoidFluids"),
-                BossHomeNbt.getStringList(tag, "AvoidBlocks"),
-                BossHomeNbt.getStringList(tag, "ProtectedBlocks"));
+                parseIds(BossHomeNbt.getStringList(tag, "AvoidBlocks")),
+                parseIds(BossHomeNbt.getStringList(tag, "ProtectedBlocks")));
+    }
+
+    /** Serialises a parsed block-id set back to the plain string list used on disk. */
+    private static List<String> toIdStrings(Set<ResourceLocation> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>(ids.size());
+        for (ResourceLocation id : ids) {
+            out.add(id.toString());
+        }
+        return out;
+    }
+
+    /** Re-parses stored block ids into the same {@link Set} form the rules use at runtime. */
+    private static Set<ResourceLocation> parseIds(List<String> raw) {
+        if (raw.isEmpty()) {
+            return Set.of();
+        }
+        Set<ResourceLocation> ids = new HashSet<>(raw.size());
+        for (String value : raw) {
+            ResourceLocation id = ResourceLocation.tryParse(value);
+            if (id != null) {
+                ids.add(id);
+            }
+        }
+        return Set.copyOf(ids);
     }
 
     // ------------------------------------------------------------------ spawn

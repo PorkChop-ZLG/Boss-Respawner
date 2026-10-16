@@ -80,8 +80,8 @@ class RespawnEntrySchemaV2Test {
         assertEquals(2, placement.horizontalRadius());
         assertFalse(placement.requireGround());
         assertTrue(placement.avoidFluids());
-        assertEquals(java.util.List.of("minecraft:bedrock"), placement.avoidBlocks());
-        assertEquals(java.util.List.of("minecraft:chest"), placement.protectedBlocks());
+        assertEquals(java.util.Set.of(ResourceLocation.parse("minecraft:bedrock")), placement.avoidBlocks());
+        assertEquals(java.util.Set.of(ResourceLocation.parse("minecraft:chest")), placement.protectedBlocks());
     }
 
     @Test
@@ -134,9 +134,35 @@ class RespawnEntrySchemaV2Test {
                 }
                 """));
 
-        assertEquals(java.util.List.of("cataclysm:boss_respawner", "minecraft:spawner"),
+        assertEquals(java.util.Set.of(
+                        ResourceLocation.parse("cataclysm:boss_respawner"),
+                        ResourceLocation.parse("minecraft:spawner")),
                 entry.placement().protectedBlocks());
         assertTrue(entry.placement().avoidBlocks().isEmpty());
+    }
+
+    @Test
+    @DisplayName("block id lists are parsed eagerly, dropping malformed ids but keeping unregistered ones")
+    void blockIdListsAreParsedDefensively() {
+        RespawnEntry entry = parseOrFail(entryWith("""
+                {
+                  "mode": "home",
+                  "home": {
+                    "avoid_blocks": ["minecraft:bedrock", "###", "othermod:not_installed"],
+                    "protected_blocks": ["twilightforest:dark_chest"]
+                  }
+                }
+                """));
+
+        // "###" is not a valid resource location and is dropped; "othermod:not_installed" is well formed
+        // and is kept even though that block is not installed - compatibility lists rely on that.
+        assertEquals(java.util.Set.of(
+                        ResourceLocation.parse("minecraft:bedrock"),
+                        ResourceLocation.parse("othermod:not_installed")),
+                entry.placement().avoidBlocks(),
+                "malformed ids must be dropped, unregistered-but-valid ids must survive");
+        assertEquals(java.util.Set.of(ResourceLocation.parse("twilightforest:dark_chest")),
+                entry.placement().protectedBlocks());
     }
 
     // ---------------------------------------------------------------- rejections
