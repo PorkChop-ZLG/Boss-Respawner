@@ -111,6 +111,35 @@
 
 本模组的用途是「某个 Boss 已被打掉，但其他玩家还没打」。因此复活钥匙必须**在打该 Boss 之前就能获得**——Boss 的掉落物天然不满足这个条件。上面两个模组因为无法为每个 Boss 都找到战前专属物品，采用了「多个 Boss 共用一件稀缺物品」的方案。详见 [`docs/bosses-rise-mapping.md`](docs/bosses-rise-mapping.md) 与 [`docs/twilight-forest-mapping.md`](docs/twilight-forest-mapping.md)。
 
+## Jade 联动
+
+装了 [Jade](https://www.curseforge.com/minecraft/mc-mods/jade) 时，鼠标指向**通用Boss重生笼**会额外显示两行（追加在方块名那行之后）：
+
+```text
+通用Boss重生笼
+重生Boss：米诺菇
+重生物品：[图标] 魔法地图核心
+```
+
+- 第一行是**翻译后的实体名**，**不渲染任何生物模型**（没有覆盖图标，也没有幽灵实体）
+- 第二行是**物品图标 + 翻译后的物品名**，图标自带原版数量角标（`activation.amount > 1` 时显示需要几个）；超过一组时另附 `×N`
+- 颜色跟随 **Jade 主题**，不写死
+- 未配置的笼子不显示第一行；规则指向的模组被移除时显示原始 ID（便于排查）
+- Jade 是**可选依赖**，没装时本模组行为完全不变；玩家可以用 Jade 自带的开关单独关掉它
+
+实现位于 `src/main/java/com/zonlong/bossrespawner/compat/jade/`，由两个类组成：
+
+| 类 | 作用 |
+|---|---|
+| `BossRespawnerJadePlugin` | `@WailaPlugin` 入口，注册方块组件 |
+| `BossRespawnerJadeProvider` | 构造那两行 |
+
+> **重要约束**：这两个类**不得**被任何「总会加载」的代码（`@Mod` 主类、事件处理器、配置、注册表）引用。
+> Jade 靠注解扫描自行加载它们；没有 Jade 时它们永远不会被类加载，因此不会有 `NoClassDefFoundError`。
+> 该约束由 `JadeOptionalityTest` 在源码层面强制守护。
+
+构建配置为 `compileOnly` + `runtimeOnly`：编译需要 Jade 的 API，但不声明为必装依赖，也不打包 Jade 自身。
+
 ## JSON 配置
 
 数据包目录：

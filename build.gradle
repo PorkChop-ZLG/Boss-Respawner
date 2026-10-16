@@ -141,6 +141,16 @@ dependencies {
     runtimeOnly "curse.maven:the-twilight-forest-227639:7797302"
     runtimeOnly "curse.maven:bossesrise-1314084:8123167"
 
+    // Dev-only convenience mods: present in runClient/runServer, but this mod does NOT depend on them
+    // and they are deliberately absent from neoforge.mods.toml.
+    runtimeOnly "curse.maven:explorers-compass-491794:7892943"
+
+    // Jade is an optional integration target. compileOnly puts its API on our compile classpath without
+    // declaring or bundling it; runtimeOnly makes it available in runClient. The plugin classes themselves
+    // are only ever loaded by Jade's own annotation scan (see compat/jade).
+    compileOnly "curse.maven:jade-324717:8591319"
+    runtimeOnly "curse.maven:jade-324717:8591319"
+
     // JUnit 5 for pure-logic unit tests (JSON schema parsing, SavedData NBT round-trip).
     // These tests never bootstrap the game; they only exercise plain Java logic plus
     // the Minecraft classes that are already on the runtime classpath.

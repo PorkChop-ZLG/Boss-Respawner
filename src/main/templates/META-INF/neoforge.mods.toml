@@ -127,6 +127,15 @@ description='''
     ordering="NONE"
     side="BOTH"
 
+# Optional Jade (WAILA-style tooltip overlay) dependency.
+# Jade is an integration target: when it is present this mod registers a plugin that shows what a
+# Boss Respawner block will revive. Without Jade everything else works exactly the same.
+[[dependencies.${mod_id}]]
+    modId="jade"
+    type="optional"
+    ordering="AFTER"
+    side="BOTH"
+
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares
 # that your mod requires GL version 3.2 or higher. Other features will be added. They are side aware so declaring this won't
 # stop your mod loading on the server for example.
