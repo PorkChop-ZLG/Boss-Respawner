@@ -9,6 +9,9 @@
 > - 移除每区块重生笼数量限制。
 > - 移除 `spawn.set_home_to_cage`。
 > - `max_attempts` 默认 20，失败后恢复未点亮并重置、警告。
+>
+> **再后续更新：** JSON Schema 已从 v2 升到 **v3**（`spawn` 改为必填 `spawn.mode` + `spawn.summon` /
+> `spawn.transform`，`placement.<mode>` 新增 `place_delay_ticks`）。当前格式以 `README.md` 为准。
 
 **版本：** v1.0（历史设计稿）
 **适用环境：** Minecraft 1.21.1 / NeoForge 21.1.219 / Java 21 / ModDevGradle

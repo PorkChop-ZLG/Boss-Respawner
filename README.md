@@ -157,7 +157,7 @@ data/<namespace>/boss_respawner/entries/<任意文件名>.json
 
 - 监听目录会递归加载所有 `.json`。
 - 执行 `/reload` 后生效；已放置的重生笼使用放置当时的规则快照，不会被 `/reload` 改变。
-- **当前只支持 `schema_version: 2`**，`schema_version` 必须显式写出。
+- **当前只支持 `schema_version: 3`**，`schema_version` 必须显式写出。
 - 非法或未注册的条目会被跳过，不影响其他条目。
 
 ### 两种放置模式
@@ -198,17 +198,19 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 
 | 分类 | 字段 | 必填/选填 | 默认值 |
 |---|---|---|---|
-| 顶层 | `schema_version` | **必填** | 无（必须为 `2`） |
+| 顶层 | `schema_version` | **必填** | 无（必须为 `3`） |
 | 顶层 | `entity` | **必填** | 无 |
 | 顶层 | `activation.item` | **必填** | 无 |
 | 顶层 | `placement.mode` | **必填** | 无（`death` 或 `home`） |
 | 顶层 | `placement.<mode>` 对应的配置块 | **必填** | 无 |
+| 顶层 | `spawn.mode` | **必填** | 无（`summon` 或 `transform`） |
+| 顶层 | `spawn.<mode>` 对应的配置块 | **必填** | 无 |
 | 顶层 | `enabled` | 选填 | `true` |
 | 顶层 | `priority` | 选填 | `0` |
 | 激活 | `activation.amount` | 选填 | `1` |
 | 激活 | `activation.consume` | 选填 | `true` |
 | 死亡条件 | `death` 整个配置块 | 选填 | 使用默认值 |
-| 生成 | `spawn` 整个配置块 | 选填 | 使用默认值 |
+| 生成 | `spawn.<mode>` 内的各字段 | 选填 | 见字段表 |
 | 重复策略 | `duplicate` 整个配置块 | 选填 | 使用默认值 |
 | 放置 | `placement.<mode>` 内的各字段 | 选填 | 见字段表 |
 
@@ -222,7 +224,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "entity": "minecraft:warden",
   "activation": {
     "item": "minecraft:echo_shard"
@@ -230,6 +232,10 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
   "placement": {
     "mode": "home",
     "home": {}
+  },
+  "spawn": {
+    "mode": "summon",
+    "summon": {}
   }
 }
 ```
@@ -250,7 +256,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "enabled": true,
   "priority": 0,
   "entity": "minecraft:warden",
@@ -263,6 +269,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
     "mode": "home",
     "home": {
       "offset": [0, 0, 0],
+      "place_delay_ticks": 0,
       "force_place": false,
       "search_failure_fallback": true,
       "search_down": 32,
@@ -280,16 +287,19 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
     "biomes": []
   },
   "spawn": {
-    "delay_ticks": 20,
-    "require_player_nearby": true,
-    "player_range": 9.0,
-    "allow_peaceful": false,
-    "count": 1,
-    "spawn_offset": [0, 0, 0],
-    "nbt": "",
-    "finalize_spawn": true,
-    "max_attempts": 20,
-    "retry_interval_ticks": 4
+    "mode": "summon",
+    "summon": {
+      "delay_ticks": 20,
+      "require_player_nearby": true,
+      "player_range": 9.0,
+      "allow_peaceful": false,
+      "count": 1,
+      "spawn_offset": [0, 0, 0],
+      "nbt": "",
+      "finalize_spawn": true,
+      "max_attempts": 20,
+      "retry_interval_ticks": 4
+    }
   },
   "duplicate": {
     "mode": "allow_multiple",
@@ -305,6 +315,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
   "mode": "death",
   "death": {
     "offset": [0, 0, 0],
+    "place_delay_ticks": 0,
     "force_place": false,
     "search_failure_fallback": true,
     "search_down": 32,
@@ -326,7 +337,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 
 | 字段 | 类型 | 必填/选填 | 默认值 | 说明 |
 |---|---|---|---|---|
-| `schema_version` | int | **必填** | 无 | 必须为 `2`。缺失、非数字或其他数值都会跳过该条目。 |
+| `schema_version` | int | **必填** | 无 | 必须为 `3`。缺失、非数字或其他数值都会跳过该条目。 |
 | `enabled` | bool | 选填 | `true` | 设为 `false` 时忽略整个条目。 |
 | `priority` | int | 选填 | `0` | 多个条目匹配同一个实体时使用，数字越大越优先；同优先级时按条目 ID 字典序取较小者。 |
 | `entity` | string 或 string[] | **必填** | 无 | 目标实体 ID，例如 `"minecraft:warden"`；也可写成数组共用同一套规则。数组中的实体必须全部已注册，否则整个条目被跳过。 |
@@ -354,6 +365,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
 | `offset` | int[3] | `[0, 0, 0]` | 相对模式基准点（死亡位置 / 出生点）的偏移，只应用一次 |
+| `place_delay_ticks` | int | `0` | Boss 死后等待多少 tick 再放置重生笼，最小 `0`。用于**等过 Boss 的死亡动画与它的战利品箱子** —— 有些模组的宝箱会在死亡动画结束后才出现，若重生笼先放下去会被顶掉或被迫失败（暮色森林的米诺菇就是这种情况）。暮色森林条目默认 `30`，幻影骑士 `100` |
 | `force_place` | bool | `false` | 是否跳过搜索，直接在 `基准点 + offset` 放置 |
 | `search_failure_fallback` | bool | `true` | 搜索失败后是否在该坐标强制放置 |
 | `search_down` | int | `32` | 从基准点向下搜索的最大格数，最小 `0` |
@@ -399,6 +411,20 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 
 #### `spawn`：生成行为
 
+`spawn` 与 `placement` 一样是**先选模式、再放子对象**的结构：
+
+| 字段 | 类型 | 必填/选填 | 说明 |
+|---|---|---|---|
+| `mode` | string | **必填** | `"summon"`：直接生成 `entity`（原有行为）。`"transform"`：激活时把重生笼**变成另一个方块**，由那个方块产生 Boss（见下）。缺失或非法时跳过整条规则并输出警告。 |
+| `summon` | object | `mode: summon` 时必填 | 直接生成实体时的配置块。 |
+| `transform` | object | `mode: transform` 时必填 | 交给方块生成时的配置块。 |
+
+> **v3 起 `spawn` 整体是必填的**：`spawn.mode` 与选中的那个子对象缺一不可，只写 `spawn: {}` 或完全不写 `spawn` 都会被拒绝。**不再有隐式 `"summon"` 默认值**，内置规则全部显式写了 `"mode": "summon"`。
+>
+> 两个子对象**不共用字段**：直接生成实体与交出方块几乎没有交集，因此它们是两套独立的字段表。
+
+`spawn.summon`：直接生成实体
+
 | 字段 | 类型 | 选填 | 默认值 | 说明 |
 |---|---|---|---|---|
 | `delay_ticks` | int | 选填 | `20` | 右键点亮后等待多少 tick 再尝试生成，最小 `0` |
@@ -411,6 +437,45 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 | `finalize_spawn` | bool | 选填 | `true` | 对 `Mob` 是否调用 `finalizeSpawn` |
 | `max_attempts` | int | 选填 | `20` | 最大尝试次数。`-1` 表示无限。达到上限后恢复未点亮并重置 |
 | `retry_interval_ticks` | int | 选填 | `4` | 生成失败后的重试间隔，最小 `1` |
+
+`spawn.transform`：交给方块生成
+
+| 字段 | 类型 | 选填 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `transform_block` | string | **必填** | 无 | 要变成的方块 ID。**不写或无法解析则整条规则被跳过**。解析时不查注册表，因此可以写未安装模组的方块，那条规则只是永远不会触发 |
+| `delay_ticks` | int | 选填 | `20` | 点亮后等待多少 tick 再替换方块，最小 `0`。用于让重生笼播完开启动画 |
+| `allow_peaceful` | bool | 选填 | `false` | 是否允许在和平难度下转换 |
+| `nbt` | string | 选填 | `""` | 写到新方块 BlockEntity 上的 SNBT，等同 `/setblock` 命令的尾随标签。留空表示不改动 BlockEntity |
+
+#### `spawn.mode: "transform"`：交给别的方块生成
+
+有些 Boss **不是一个实体**，直接生成会出错。最典型的是暮色森林的**幻影骑士**：它其实是**6 个实体**，靠 64 格内的距离互相判定为同组，编号（`MyNumber` 0..5）决定谁持有血条、谁拿什么武器。如果只生成 1 个：
+
+- 落单骑士死时会走"最后一个"分支 → **掉落整套 Boss 战利品 + 奖杯 + 成就，并把骑士要塞标记为已攻克**，杀 1 个就能刷
+- 若 64 格内还有其它幻影骑士，它的死亡动画**永远无法完成**（碰撞箱已变成 0×0×0 且持续上浮）→ 玩家看到"打不死、不消失的幽灵"
+- 它会**凭空生成一个黑暗宝箱**
+
+暮色森林自带 Boss 刷怪笼方块，那才是它生成 Boss 的正规方式（数量、编号、home 点、战利品全部正确）。因此：
+
+```json
+"spawn": {
+  "mode": "transform",
+  "transform": {
+    "transform_block": "twilightforest:knight_phantom_boss_spawner",
+    "delay_ticks": 20,
+    "allow_peaceful": false,
+    "nbt": ""
+  }
+}
+```
+
+玩家用钥匙右键 → 重生笼替换成暮色的刷怪笼 → 玩家在 9 格内时刷怪笼自动生成 Boss 并**销毁自身**。
+
+注意事项：
+
+- 目标方块由 ID 解析，**没有编译期依赖**，因此适用于任何模组
+- 和平难度下默认**拒绝转换**（保留重生笼、不消耗钥匙），除非规则设了 `allow_peaceful: true`。原因：暮色的刷怪笼不会在和平难度触发，而它是 `strength(-1.0F, ...)` 即**不可破坏**，转换过去会留下一个拆不掉的方块
+- `mode` 为 `transform` 时**只有 `transform` 子对象生效**（`transform_block` / `delay_ticks` / `allow_peaceful` / `nbt`）；`count` / `spawn_offset` / `player_range` / `require_player_nearby` / `finalize_spawn` / `max_attempts` / `retry_interval_ticks` 都不参与——只换一个方块，没有"数量"、没有偏移、`setBlock` 也不会失败
 
 #### `duplicate`：重复重生笼策略
 
@@ -428,23 +493,59 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 ### 加载与校验规则
 
 - 文件路径格式：`data/<namespace>/boss_respawner/entries/<任意文件名>.json`
-- `schema_version` 必须显式存在且等于 `2`。
+- `schema_version` 必须显式存在且等于 `3`。
 - `placement.mode` 必须显式存在且为 `death` 或 `home`。
 - 选中的模式对象（`placement.death` 或 `placement.home`）必须存在。
+- `spawn.mode` 必须显式存在且为 `summon` 或 `transform`。
+- 选中的生成模式对象（`spawn.summon` 或 `spawn.transform`）必须存在；`transform` 还必须给出可解析的 `transform_block`。
 - `entity` 必须至少包含一个有效实体 ID，且数组中的所有实体都必须已注册。
 - `activation.item` 必须指向已注册物品。
-- `spawn.nbt` 非空时必须是合法 SNBT。
+- `spawn.summon.nbt` / `spawn.transform.nbt` 非空时必须是合法 SNBT。
 - `enabled = false` 的条目直接忽略。
 - 以上任一条件不满足，整条规则被跳过并输出警告，不影响其他条目。
 - 多个数据包可以通过原版数据包优先级覆盖同名 JSON 文件。
 
-### 从 schema v1 迁移
+### 从旧版本迁移
 
-Schema v1 已**不再被解析**（这是有意的破坏性变更）。如果你的数据包还是 v1，请按下表迁移：
+Schema v1 与 v2 都已**不再被解析**（有意的破坏性变更）。当前版本是 **schema v3**：`spawn` 变成「先选模式、再放子对象」，`placement.<mode>` 新增 `place_delay_ticks`。
 
-| v1 | v2 |
+#### v2 → v3
+
+| v2 | v3 |
 |---|---|
-| `schema_version: 1` | `schema_version: 2` |
+| `schema_version: 2` | `schema_version: 3` |
+| `spawn.delay_ticks`、`spawn.count` 等字段**直接**放在 `spawn` 下 | 整体移进 `spawn.summon`，并补一行 `"mode": "summon"` |
+| *(无)* | `spawn.mode` —— 新增必填，取 `"summon"` 或 `"transform"` |
+| *(无)* | `spawn.transform` —— 选中 `"transform"` 时的子对象，`transform_block` 必填 |
+| *(无)* | `placement.<mode>.place_delay_ticks` —— 新增，默认 `0` |
+
+扁平 `spawn`（字段直接放在 `spawn` 下、没有 `mode`）会被明确拒绝，日志里会指出"这是 v2 结构"。最省事的迁移方式：补上 `"mode": "summon"`，再把原来的字段整体挪进 `spawn.summon`：
+
+```json
+"spawn": {
+  "mode": "summon",
+  "summon": {
+    "delay_ticks": 20,
+    "require_player_nearby": true,
+    "player_range": 9.0,
+    "allow_peaceful": false,
+    "count": 1,
+    "spawn_offset": [0, 0, 0],
+    "nbt": "",
+    "finalize_spawn": true,
+    "max_attempts": 20,
+    "retry_interval_ticks": 4
+  }
+}
+```
+
+#### v1 → v3
+
+v1 的扁平 `placement` 同样会被明确拒绝（日志会指出"这是 v1 结构"）：
+
+| v1 | v3 |
+|---|---|
+| `schema_version: 1` | `schema_version: 3` |
 | `placement.offset` | `placement.<mode>.offset` |
 | `placement.search_down` | `placement.<mode>.search_down` |
 | `placement.search_up` | `placement.<mode>.search_up` |
@@ -452,10 +553,12 @@ Schema v1 已**不再被解析**（这是有意的破坏性变更）。如果你
 | `placement.require_ground` | `placement.<mode>.require_ground` |
 | `placement.avoid_fluids` | `placement.<mode>.avoid_fluids` |
 | `placement.avoid_blocks` | `placement.<mode>.avoid_blocks` |
+| `spawn.*`（扁平） | `spawn.summon.*`，并补上必填的 `spawn.mode` |
 | *(无)* | `placement.mode` —— 新增必填，取 `"death"` 或 `"home"` |
 | *(无)* | `placement.<mode>.force_place` —— 新增，默认 `false` |
 | *(无)* | `placement.<mode>.search_failure_fallback` —— 新增，默认 `true` |
 | *(无)* | `placement.<mode>.protected_blocks` —— 新增，默认 `[]` |
+| *(无)* | `placement.<mode>.place_delay_ticks` —— 新增，默认 `0` |
 | 全局 `forcePlaceOnNoSafeSpot` | `placement.<mode>.search_failure_fallback`（按规则单独设置） |
 | 全局 `foreignCageBlockIds` | `placement.<mode>.avoid_blocks`（避让）与新增的全局 `protectedBlockIds` / 规则级 `protected_blocks`（保护底线） |
 | 全局 `debug.logPlacement` | 现为 `debug.debugInfo` |
@@ -467,6 +570,7 @@ Schema v1 已**不再被解析**（这是有意的破坏性变更）。如果你
   "mode": "death",
   "death": {
     "offset": [0, 0, 0],
+    "place_delay_ticks": 0,
     "force_place": false,
     "search_failure_fallback": true,
     "search_down": 32,
@@ -517,7 +621,8 @@ gradlew.bat runClient
 
 `gradlew.bat test` 运行的是不启动游戏的纯逻辑单元测试，涵盖：
 
-- schema v2 的解析与各类拒绝路径（含 v1 扁平结构、缺失 `mode`、缺失模式对象、非法模式）；
-- `BossHomeSavedData` 的 NBT 往返、去重合并、区块索引与 `dataVersion` 拒绝策略；
+- schema v3 的解析与各类拒绝路径（含 v1 扁平 `placement`、v2 扁平 `spawn`、缺失 `mode`、缺失模式对象、非法模式、版本门）；
+- `BossHomeSavedData` 的 NBT 往返、去重合并、区块索引、放置延迟与 `dataVersion` 拒绝策略；
 - 全部 32 个内置 JSON 的真实解析验证与字段默认值检查；
+- 验收数据包（`docs/examples/acceptance-datapack`）的正向/负向条目校验；
 - 对已删除全局配置项的源码引用检查。

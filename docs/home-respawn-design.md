@@ -82,15 +82,20 @@ home_z
 原始 Home 位置 A
     ↓ placement.home.offset
 重生笼位置 B
-    ↓ spawn.spawn_offset
+    ↓ spawn.summon.spawn_offset（v2 及以前为 spawn.spawn_offset）
 实体实际生成位置 C
 ```
 
 下一次死亡仍然使用 A，避免因放置偏移、安全搜索或生成偏移导致位置逐轮漂移。
 
-## 4. JSON Schema v2
+## 4. JSON Schema v3
 
-项目所有者已确认，本模组当前开发阶段可以接受 Schema v1 到 v2 的破坏性变更。新的规则使用 `schema_version: 2`，旧版本规则不再解析。
+> **状态：已升到 v3。** 本节最初写于 schema v2 时期。当前实现为 **schema v3**：`schema_version` 必须写 `3`，
+> `spawn` 与 `placement` 一样改为「先选模式、再放子对象」（`spawn.mode` + `spawn.summon` / `spawn.transform`），
+> `placement.<mode>` 新增 `place_delay_ticks`（默认 `0`）。v1 与 v2 的布局都会被明确拒绝，不再解析。
+> 下面 placement 部分的嵌套结构与字段名与 v3 完全一致，只需把版本号读作 `3`。
+
+项目所有者已确认，本模组当前开发阶段可以接受破坏性的 Schema 变更：**v1 → v2 → v3** 均已发生过，旧版本规则不再解析。新的规则使用 `schema_version: 3`。
 
 ### 4.1 顶层结构
 
@@ -100,7 +105,9 @@ home_z
 - `entity`；
 - `activation.item`；
 - `placement.mode`；
-- 与 `placement.mode` 对应的配置块：`placement.death` 或 `placement.home`。
+- 与 `placement.mode` 对应的配置块：`placement.death` 或 `placement.home`；
+- `spawn.mode`；
+- 与 `spawn.mode` 对应的配置块：`spawn.summon` 或 `spawn.transform`。
 
 除上述字段外，字段均可省略并使用代码默认值。非法字段类型、非法模式或缺少选中模式对象时，整条规则跳过并输出 `warn`。
 
@@ -116,7 +123,7 @@ home_z
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "entity": "example:boss",
   "activation": {
     "item": "example:key"
@@ -124,6 +131,10 @@ home_z
   "placement": {
     "mode": "home",
     "home": {}
+  },
+  "spawn": {
+    "mode": "summon",
+    "summon": {}
   }
 }
 ```
@@ -445,6 +456,7 @@ ActivationRuleSnapshot activationSnapshot
 SpawnRuleSnapshot spawnSnapshot
 DuplicateRuleSnapshot duplicateSnapshot
 long createdGameTime
+long notBeforeGameTime                      // v3 新增：place_delay_ticks 换算出的到期时间
 ```
 
 待放置任务保存完整规则快照，保证 `/reload` 或服务器重启后仍按死亡当时的规则执行（去重合并时以最近一次死亡为准）。
@@ -561,12 +573,13 @@ src/main/resources/data/**/boss_respawner/entries/*.json
 
 所有内置条目统一：
 
-- `schema_version` 改为 `2`；
+- `schema_version` 改为 `3`（后续已升到 v3：`spawn` 改为模式 + 子对象，`placement.<mode>` 增加 `place_delay_ticks`）；
 - `placement.mode` 改为必填并显式写 `home`；
 - 原 `placement` 字段移动到 `placement.home`；
 - 增加 `force_place`，默认 `false`；
 - 增加 `search_failure_fallback`，默认 `true`；
 - 增加 `protected_blocks: []`；
+- `spawn` 补必填的 `mode`（内置规则全部为 `"summon"`，幻影骑士为 `"transform"`），原扁平字段移入 `spawn.summon`；
 - 所有可选字段都显式写出，作为完整模板；
 - 需要避开的方块显式写入 `placement.home.avoid_blocks`；
 - 不再依赖旧的全局 `foreignCageBlockIds`。

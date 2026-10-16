@@ -116,7 +116,7 @@ public final class RespawnCagePlacer {
         // The mode offset is applied exactly once, here, to the raw anchor.
         BlockPos base = origin.offset(placement.offset()[0], placement.offset()[1], placement.offset()[2]);
 
-        return execute(new Request(
+        Request request = new Request(
                 deathLevel.getServer(),
                 targetDimension,
                 base,
@@ -125,7 +125,18 @@ public final class RespawnCagePlacer {
                 entityTypeId,
                 homeSnapshot,
                 RespawnRuleSnapshot.of(entry),
-                deathLevel.getGameTime()));
+                deathLevel.getGameTime());
+
+        if (placement.placeDelayTicks() > 0) {
+            // Queue instead of running the pipeline now. The boss's death animation may still be playing and
+            // its loot chest may not exist yet; a chest landing where the cage wants to go is what stopped
+            // the Minoshroom cage from being placed at all.
+            DebugLog.info("Delaying respawn cage for {} at {} by {} ticks (place_delay_ticks)",
+                    entityTypeId, base, placement.placeDelayTicks());
+            return defer(deathLevel, request);
+        }
+
+        return execute(request);
     }
 
     /**
@@ -229,6 +240,9 @@ public final class RespawnCagePlacer {
     /** Queues (or refreshes) the persistent deferred task for this placement target. */
     private static Outcome defer(ServerLevel level, Request request) {
         BossHomeSavedData data = BossHomeSavedData.get(request.server());
+        // Recomputed from the death time, not from "now", so re-deferring an unloaded chunk cannot push the
+        // deadline further out on every attempt: a task queued with a delay stays due at the same tick.
+        long notBefore = request.gameTime() + Math.max(0, request.rules().placement().placeDelayTicks());
         PendingPlacementTask task = new PendingPlacementTask(
                 request.targetDimension(),
                 request.base(),
@@ -236,7 +250,8 @@ public final class RespawnCagePlacer {
                 request.entityType(),
                 request.homeSnapshot(),
                 request.rules(),
-                request.gameTime());
+                request.gameTime(),
+                notBefore);
 
         UUID displaced = data.enqueuePendingPlacement(task);
         if (displaced != null && !displaced.equals(request.sourceEntityUuid())) {
@@ -248,8 +263,8 @@ public final class RespawnCagePlacer {
             }
         }
 
-        DebugLog.info("Deferred respawn cage for {} at {} (chunk not loaded); queue size={}",
-                request.entityTypeId(), request.base(), data.pendingCount());
+        DebugLog.info("Deferred respawn cage for {} at {} (not before tick {}); queue size={}",
+                request.entityTypeId(), request.base(), notBefore, data.pendingCount());
         return Outcome.DEFERRED;
     }
 
@@ -362,21 +377,34 @@ public final class RespawnCagePlacer {
         RespawnEntry.ActivationRule activation = request.rules().activation();
         RespawnEntry.SpawnRule spawn = request.rules().spawn();
 
-        be.setSpawnerData(
-                request.entityTypeId(),
-                activation.item().toString(),
-                activation.amount(),
-                activation.consume(),
-                parseNbt(spawn.nbt()),
-                spawn.delayTicks(),
-                spawn.requirePlayerNearby(),
-                spawn.playerRange(),
-                spawn.allowPeaceful(),
-                spawn.count(),
-                spawn.spawnOffset(),
-                spawn.finalizeSpawn(),
-                spawn.maxAttempts(),
-                spawn.retryIntervalTicks());
+        if (spawn.mode() == RespawnEntry.SpawnMode.TRANSFORM && spawn.transform() != null) {
+            // Hand-off mode: the cage becomes another block once its opening animation has played, instead
+            // of summoning the entity. Its delay and allow_peaceful live in the transform object.
+            RespawnEntry.TransformRule transform = spawn.transform();
+            be.setTransform(transform.block(), parseNbt(transform.nbt()),
+                    transform.delayTicks(), transform.allowPeaceful());
+        } else if (spawn.summon() != null) {
+            RespawnEntry.SummonRule summon = spawn.summon();
+            be.setSpawnerData(
+                    request.entityTypeId(),
+                    activation.item().toString(),
+                    activation.amount(),
+                    activation.consume(),
+                    parseNbt(summon.nbt()),
+                    summon.delayTicks(),
+                    summon.requirePlayerNearby(),
+                    summon.playerRange(),
+                    summon.allowPeaceful(),
+                    summon.count(),
+                    summon.spawnOffset(),
+                    summon.finalizeSpawn(),
+                    summon.maxAttempts(),
+                    summon.retryIntervalTicks());
+        } else {
+            UniversalBossRespawner.LOGGER.warn(
+                    "Respawn rule for {} has spawn.mode {} but no matching object; cage left unconfigured",
+                    request.entityTypeId(), spawn.mode());
+        }
 
         // Home-mode cages remember the original anchor so the respawned entity inherits it instead of
         // registering wherever it happens to appear.

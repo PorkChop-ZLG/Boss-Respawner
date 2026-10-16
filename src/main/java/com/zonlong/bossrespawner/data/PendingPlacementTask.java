@@ -32,13 +32,17 @@ public record PendingPlacementTask(
         ResourceLocation entityType,
         @Nullable HomeRecord homeSnapshot,
         RespawnRuleSnapshot ruleSnapshot,
-        long createdGameTime) {    private static final String TAG_DIMENSION = "TargetDimension";
+        long createdGameTime,
+        long notBeforeGameTime) {
+
+    private static final String TAG_DIMENSION = "TargetDimension";
     private static final String TAG_BASE = "TargetBase";
     private static final String TAG_SOURCE_UUID = "LastSourceEntityUuid";
     private static final String TAG_ENTITY_TYPE = "EntityType";
     private static final String TAG_HOME = "HomeSnapshot";
     private static final String TAG_RULES = "RuleSnapshot";
     private static final String TAG_CREATED = "CreatedGameTime";
+    private static final String TAG_NOT_BEFORE = "NotBeforeGameTime";
 
     /** De-duplication key: one pending task per placement target. */
     public record Key(ResourceKey<Level> dimension, long basePos) {
@@ -56,6 +60,17 @@ public record PendingPlacementTask(
         return ChunkPos.asLong(targetBase.getX() >> 4, targetBase.getZ() >> 4);
     }
 
+    /**
+     * Whether the rule's {@code place_delay_ticks} has elapsed.
+     *
+     * <p>The delay exists so a cage can wait out a boss's death animation and its loot chest: a chest
+     * placed where the cage wants to go would otherwise make the placement fail. Tasks with no delay carry
+     * {@code notBeforeGameTime == createdGameTime}, so they are due the moment they are queued.
+     */
+    public boolean isDue(long gameTime) {
+        return gameTime >= notBeforeGameTime;
+    }
+
     public CompoundTag toTag() {
         CompoundTag tag = new CompoundTag();
         BossHomeNbt.putDimension(tag, TAG_DIMENSION, targetDimension);
@@ -67,6 +82,7 @@ public record PendingPlacementTask(
         }
         tag.put(TAG_RULES, ruleSnapshot.toTag());
         tag.putLong(TAG_CREATED, createdGameTime);
+        tag.putLong(TAG_NOT_BEFORE, notBeforeGameTime);
         return tag;
     }
 
@@ -85,6 +101,10 @@ public record PendingPlacementTask(
         HomeRecord home = tag.contains(TAG_HOME, Tag.TAG_COMPOUND)
                 ? HomeRecord.fromTag(tag.getCompound(TAG_HOME))
                 : null;
+        long created = tag.getLong(TAG_CREATED);
+        // Written by schema v3 onwards. Tasks saved before that have no delay, so their creation time is
+        // the correct stand-in and they stay immediately eligible.
+        long notBefore = tag.contains(TAG_NOT_BEFORE, Tag.TAG_LONG) ? tag.getLong(TAG_NOT_BEFORE) : created;
         return new PendingPlacementTask(
                 BossHomeNbt.getDimension(tag, TAG_DIMENSION),
                 BossHomeNbt.getBlockPos(tag, TAG_BASE),
@@ -92,6 +112,7 @@ public record PendingPlacementTask(
                 BossHomeNbt.getResourceLocation(tag, TAG_ENTITY_TYPE),
                 home,
                 RespawnRuleSnapshot.fromTag(tag.getCompound(TAG_RULES)),
-                tag.getLong(TAG_CREATED));
+                created,
+                notBefore);
     }
 }

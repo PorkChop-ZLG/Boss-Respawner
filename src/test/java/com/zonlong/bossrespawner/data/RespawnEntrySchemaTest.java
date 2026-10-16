@@ -14,13 +14,16 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Schema v2 parsing rules for {@link RespawnEntry}.
+ * Schema v3 parsing rules for {@link RespawnEntry}.
  *
  * <p>Covers the behaviours required by the implementation handoff: nested {@code placement.death} /
  * {@code placement.home} objects, no implicit {@code mode} default, mode-object presence checks,
  * documented field defaults, and rejection of the schema v1 flat layout.
+ *
+ * <p>Schema v3 also requires {@code spawn.mode} plus its mode object; a schema v2 flat {@code spawn} is
+ * covered by {@link SchemaAdditionsTest}, so every rule built here carries a minimal valid {@code spawn}.
  */
-class RespawnEntrySchemaV2Test {
+class RespawnEntrySchemaTest {
 
     private static final ResourceLocation ID = ResourceLocation.parse("test:entry");
 
@@ -33,12 +36,32 @@ class RespawnEntrySchemaV2Test {
     private static String entryWith(String placementBody) {
         return """
                 {
-                  "schema_version": 2,
+                  "schema_version": 3,
                   "entity": "minecraft:warden",
                   "activation": { "item": "minecraft:echo_shard" },
-                  "placement": %s
+                  "placement": %s,
+                  "spawn": { "mode": "summon", "summon": {} }
                 }
                 """.formatted(placementBody);
+    }
+
+    /**
+     * Builds a complete rule whose {@code schema_version} line is supplied by the caller, so a version
+     * gate can be tested in isolation.
+     *
+     * @param schemaVersionLine the full line including its comma, or an empty string to omit the field
+     */
+    private static Optional<RespawnEntry> parseVersioned(String schemaVersionLine, String placementBody,
+                                                         String spawnBody) {
+        return parse("""
+                {
+                  %s
+                  "entity": "minecraft:warden",
+                  "activation": { "item": "minecraft:echo_shard" },
+                  "placement": %s,
+                  "spawn": %s
+                }
+                """.formatted(schemaVersionLine, placementBody, spawnBody));
     }
 
     private static RespawnEntry parseOrFail(String json) {
@@ -219,40 +242,35 @@ class RespawnEntrySchemaV2Test {
     }
 
     @Test
-    @DisplayName("missdeclared or unsupported schema_version is rejected")
+    @DisplayName("unsupported, missdeclared or missing schema_version is rejected")
     void schemaVersionIsValidated() {
         String placement = """
                 { "mode": "home", "home": {} }
                 """;
+        String spawn = """
+                { "mode": "summon", "summon": {} }
+                """;
 
-        // v1 is no longer accepted
-        assertTrue(parse("""
-                {
-                  "schema_version": 1,
-                  "entity": "minecraft:warden",
-                  "activation": { "item": "minecraft:echo_shard" },
-                  "placement": %s
-                }
-                """.formatted(placement)).isEmpty());
+        // 3 is the only supported version: with the rest of the rule valid, it must parse.
+        assertTrue(parseVersioned("\"schema_version\": 3,", placement, spawn).isPresent(),
+                "schema_version 3 is the supported version and must parse");
+
+        // v1 is no longer accepted.
+        assertTrue(parseVersioned("\"schema_version\": 1,", placement, spawn).isEmpty(),
+                "schema v1 must be rejected");
+
+        // v2 is the previous version and is rejected as well; its flat spawn layout is separate from this
+        // gate (see SchemaAdditionsTest), so this case declares v2 with an otherwise valid v3 body.
+        assertTrue(parseVersioned("\"schema_version\": 2,", placement, spawn).isEmpty(),
+                "schema v2 is no longer supported and must be rejected");
 
         // missing schema_version is an error, not a default
-        assertTrue(parse("""
-                {
-                  "entity": "minecraft:warden",
-                  "activation": { "item": "minecraft:echo_shard" },
-                  "placement": %s
-                }
-                """.formatted(placement)).isEmpty());
+        assertTrue(parseVersioned("", placement, spawn).isEmpty(),
+                "a missing schema_version must be rejected");
 
         // a future version is rejected too
-        assertTrue(parse("""
-                {
-                  "schema_version": 3,
-                  "entity": "minecraft:warden",
-                  "activation": { "item": "minecraft:echo_shard" },
-                  "placement": %s
-                }
-                """.formatted(placement)).isEmpty());
+        assertTrue(parseVersioned("\"schema_version\": 4,", placement, spawn).isEmpty(),
+                "a future schema_version must be rejected");
     }
 
     @Test
@@ -260,9 +278,10 @@ class RespawnEntrySchemaV2Test {
     void missingPlacementObjectIsRejected() {
         assertTrue(parse("""
                 {
-                  "schema_version": 2,
+                  "schema_version": 3,
                   "entity": "minecraft:warden",
-                  "activation": { "item": "minecraft:echo_shard" }
+                  "activation": { "item": "minecraft:echo_shard" },
+                  "spawn": { "mode": "summon", "summon": {} }
                 }
                 """).isEmpty());
     }
@@ -272,17 +291,19 @@ class RespawnEntrySchemaV2Test {
     void mandatoryTopLevelFieldsAreEnforced() {
         assertTrue(parse("""
                 {
-                  "schema_version": 2,
+                  "schema_version": 3,
                   "activation": { "item": "minecraft:echo_shard" },
-                  "placement": { "mode": "home", "home": {} }
+                  "placement": { "mode": "home", "home": {} },
+                  "spawn": { "mode": "summon", "summon": {} }
                 }
                 """).isEmpty(), "missing entity must be rejected");
 
         assertTrue(parse("""
                 {
-                  "schema_version": 2,
+                  "schema_version": 3,
                   "entity": "minecraft:warden",
-                  "placement": { "mode": "home", "home": {} }
+                  "placement": { "mode": "home", "home": {} },
+                  "spawn": { "mode": "summon", "summon": {} }
                 }
                 """).isEmpty(), "missing activation.item must be rejected");
     }
@@ -292,20 +313,22 @@ class RespawnEntrySchemaV2Test {
     void enabledAndEntityArrayBehaveAsBefore() {
         assertTrue(parse("""
                 {
-                  "schema_version": 2,
+                  "schema_version": 3,
                   "enabled": false,
                   "entity": "minecraft:warden",
                   "activation": { "item": "minecraft:echo_shard" },
-                  "placement": { "mode": "home", "home": {} }
+                  "placement": { "mode": "home", "home": {} },
+                  "spawn": { "mode": "summon", "summon": {} }
                 }
                 """).isEmpty());
 
         RespawnEntry entry = parseOrFail("""
                 {
-                  "schema_version": 2,
+                  "schema_version": 3,
                   "entity": ["minecraft:warden", "minecraft:ravager"],
                   "activation": { "item": "minecraft:echo_shard" },
-                  "placement": { "mode": "home", "home": {} }
+                  "placement": { "mode": "home", "home": {} },
+                  "spawn": { "mode": "summon", "summon": {} }
                 }
                 """);
         assertEquals(2, entry.entities().size());

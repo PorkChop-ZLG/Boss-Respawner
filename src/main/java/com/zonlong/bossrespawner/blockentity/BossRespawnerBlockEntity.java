@@ -28,6 +28,8 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
@@ -65,6 +67,21 @@ public class BossRespawnerBlockEntity extends BlockEntity {
     private boolean finalizeSpawn = true;
     private int maxAttempts = 20;
     private int retryIntervalTicks = 4;
+    /**
+     * When set, the cage replaces itself with this block once its opening animation has played, instead of
+     * summoning {@code entityTypeId}.
+     *
+     * <p>Empty for the normal summon path. Stored as an id rather than a {@code Block} so a cage written by
+     * one mod set still loads after the target mod is removed; resolution happens at activation and again
+     * when the swap is due.
+     */
+    private String transformBlockId = "";
+
+    /**
+     * NBT written to the transformed block's block entity, with the same effect as the trailing tag of a
+     * {@code /setblock} command. Empty by default, which leaves the block entity untouched.
+     */
+    private CompoundTag transformNbt = new CompoundTag();
 
     private ResourceLocation entityLocation;
     private EntityType<?> cachedEntityType;
@@ -107,13 +124,22 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         }
 
         be.litTicks++;
+        if (be.litTicks < be.delayTicks) {
+            return;
+        }
+
+        // Hand-off mode: the opening animation has played, so the cage can become the target block. The
+        // difficulty gate was applied at activation and must not be re-checked here, or a difficulty change
+        // mid-animation would leave the cage lit forever.
+        if (!be.transformBlockId.isEmpty()) {
+            be.finishTransform((ServerLevel) level, pos);
+            return;
+        }
+
         if (level.getDifficulty() == Difficulty.PEACEFUL && !be.allowPeaceful) {
             return;
         }
         if (be.requirePlayerNearby && !be.anyPlayerInRange(level)) {
-            return;
-        }
-        if (be.litTicks < be.delayTicks) {
             return;
         }
 
@@ -160,16 +186,138 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         return consumeKeyItem;
     }
 
-    public void activate(Level level) {
-        if (level.getBlockState(worldPosition).hasProperty(BossRespawnerBlock.LIT)) {
-            DebugLog.info("Activating respawner at {}: entity={} key={} delay={} maxAttempts={}",
-                    worldPosition, entityTypeId, keyItemId, delayTicks, maxAttempts);
-            level.setBlock(worldPosition, level.getBlockState(worldPosition).setValue(BossRespawnerBlock.LIT, true), 2);
-            litTicks = 0;
-            attempts = 0;
-            setChanged();
-            level.blockEvent(worldPosition, level.getBlockState(worldPosition).getBlock(), 1, 0);
+    /**
+     * Starts the revival. Called on the server only, and only after the key items have been verified.
+     *
+     * <p>Both modes do the same thing here: light up and let the opening animation play. The difference
+     * comes later, when the countdown finishes — {@link #finishTransform} instead of {@link #trySpawn}.
+     *
+     * @return {@code true} when the cage acted. {@code false} means nothing happened and the caller must
+     *         <em>not</em> consume the key items
+     */
+    public boolean activate(Level level) {
+        if (!level.getBlockState(worldPosition).hasProperty(BossRespawnerBlock.LIT)) {
+            return false;
         }
+        // Refuse before lighting up, so the player is not charged for a hand-off that can never happen.
+        if (!transformBlockId.isEmpty() && !canTransform(level)) {
+            return false;
+        }
+
+        DebugLog.info("Activating respawner at {}: mode={} entity={} key={} delay={} maxAttempts={}",
+                worldPosition, transformBlockId.isEmpty() ? "summon" : "transform",
+                entityTypeId, keyItemId, delayTicks, maxAttempts);
+        level.setBlock(worldPosition, level.getBlockState(worldPosition).setValue(BossRespawnerBlock.LIT, true), 2);
+        litTicks = 0;
+        attempts = 0;
+        setChanged();
+        level.blockEvent(worldPosition, level.getBlockState(worldPosition).getBlock(), 1, 0);
+        return true;
+    }
+
+    /**
+     * Whether a hand-off can happen at all: the target block must be installed, and Peaceful must be
+     * permitted.
+     *
+     * <p>A boss spawner typically refuses to fire on Peaceful, and Twilight Forest's are unbreakable
+     * ({@code strength(-1.0F, ...)}), so transforming there would strand a block the player cannot remove.
+     * {@code allow_peaceful} — the same opt-in the summon path uses — gates it.
+     */
+    private boolean canTransform(Level level) {
+        if (level.getDifficulty() == Difficulty.PEACEFUL && !allowPeaceful) {
+            DebugLog.info("Respawner at {} will not transform: Peaceful difficulty and allow_peaceful is false",
+                    worldPosition);
+            return false;
+        }
+        if (resolveTransformBlock() == null) {
+            UniversalBossRespawner.LOGGER.warn(
+                    "Respawner at {} is configured to transform into block '{}', which is not installed; "
+                            + "leaving the cage in place",
+                    worldPosition, transformBlockId);
+            return false;
+        }
+        return true;
+    }
+
+    /** @return the resolved target block, or {@code null} when the id is malformed or not installed */
+    @Nullable
+    private Block resolveTransformBlock() {
+        ResourceLocation id = ResourceLocation.tryParse(transformBlockId);
+        if (id == null) {
+            return null;
+        }
+        // get() answers the registry default (air) for an unknown id, so air means "not installed".
+        Block block = BuiltInRegistries.BLOCK.get(id);
+        return block == Blocks.AIR ? null : block;
+    }
+
+    /**
+     * Performs the hand-off, once the opening animation has played.
+     *
+     * @return {@code true} when the cage was replaced
+     */
+    private boolean finishTransform(ServerLevel level, BlockPos pos) {
+        Block block = resolveTransformBlock();
+        if (block == null) {
+            // The rule changed under us, or the target mod went away. Reset rather than leave the cage lit
+            // forever; the key items are not refunded, because the rule itself is what is broken.
+            UniversalBossRespawner.LOGGER.warn(
+                    "Respawner at {} could not transform: block '{}' is unavailable; resetting the cage",
+                    pos, transformBlockId);
+            resetToUnlit(level, pos);
+            return false;
+        }
+
+        DebugLog.info("Transforming respawner at {} into {} for entity={}", pos, block, entityTypeId);
+        level.setBlock(pos, block.defaultBlockState(), Block.UPDATE_ALL);
+
+        if (!transformNbt.isEmpty()) {
+            BlockEntity target = level.getBlockEntity(pos);
+            if (target == null) {
+                UniversalBossRespawner.LOGGER.warn(
+                        "Respawner at {} transformed into {}, which has no block entity; ignoring nbt",
+                        pos, block);
+            } else {
+                // The trailing tag of a /setblock command, in effect.
+                target.loadWithComponents(transformNbt, level.registryAccess());
+                target.setChanged();
+                BlockState state = level.getBlockState(pos);
+                level.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL);
+            }
+        }
+        return true;
+    }
+
+    /** Returns the cage to its unlit, reusable state without touching whatever else it was holding. */
+    private void resetToUnlit(ServerLevel level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        if (state.hasProperty(BossRespawnerBlock.LIT)) {
+            level.setBlock(pos, state.setValue(BossRespawnerBlock.LIT, false), 2);
+        }
+        litTicks = 0;
+        attempts = 0;
+        spawned = false;
+        setChanged();
+    }
+
+    /**
+     * Switches this cage to hand-off mode: stay lit for {@code delayTicks} so the opening animation plays,
+     * then become {@code block} and write {@code nbt} to that block's block entity.
+     */
+    public void setTransform(ResourceLocation block, CompoundTag nbt, int delayTicks, boolean allowPeaceful) {
+        this.transformBlockId = block == null ? "" : block.toString();
+        this.transformNbt = nbt == null ? new CompoundTag() : nbt.copy();
+        this.delayTicks = Math.max(0, delayTicks);
+        this.allowPeaceful = allowPeaceful;
+        setChanged();
+    }
+
+    public String getTransformBlockId() {
+        return transformBlockId;
+    }
+
+    public CompoundTag getTransformNbt() {
+        return transformNbt;
     }
 
     private boolean anyPlayerInRange(Level level) {
@@ -465,6 +613,10 @@ public class BossRespawnerBlockEntity extends BlockEntity {
             if (rule.contains("SpawnNbt", net.minecraft.nbt.Tag.TAG_COMPOUND)) {
                 this.spawnNbt = rule.getCompound("SpawnNbt").copy();
             }
+            this.transformBlockId = rule.getString("TransformBlock");
+            this.transformNbt = rule.contains("TransformNbt", net.minecraft.nbt.Tag.TAG_COMPOUND)
+                    ? rule.getCompound("TransformNbt").copy()
+                    : new CompoundTag();
         }
 
         this.litTicks = tag.getInt(TAG_LIT_TICKS);
@@ -519,6 +671,12 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         rule.putInt("RetryIntervalTicks", retryIntervalTicks);
         if (!spawnNbt.isEmpty()) {
             rule.put("SpawnNbt", spawnNbt.copy());
+        }
+        if (!transformBlockId.isEmpty()) {
+            rule.putString("TransformBlock", transformBlockId);
+            if (!transformNbt.isEmpty()) {
+                rule.put("TransformNbt", transformNbt.copy());
+            }
         }
         tag.put(TAG_SPAWN_RULE, rule);
 

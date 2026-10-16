@@ -6,6 +6,11 @@
 **执行状态：** 设计已确认，交给 DeepSeek 实现  
 **重要：** 本计划只作为实现交接，不要求当前 Codex 执行代码修改。
 
+> **后续更新：** 本计划中的 JSON Schema 已在后续版本中**升到 v3**。`schema_version` 现在只接受 `3`；
+> `spawn` 改为「先选模式、再放子对象」（必填 `spawn.mode` + `spawn.summon` / `spawn.transform`）；
+> `placement.<mode>` 新增 `place_delay_ticks`（默认 `0`）。文中出现的 `schema_version: 2` 与扁平 `spawn`
+> 都是当时的实现，当前格式以 [README](../../README.md) 与 [Home 出生点模式设计](../home-respawn-design.md) 为准。
+
 ## 一、执行约束
 
 1. 先阅读 `AGENTS.md`、`README.md`、`docs/home-respawn-design.md` 和相关源码。

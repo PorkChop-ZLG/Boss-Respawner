@@ -75,7 +75,7 @@ class BuiltinEntriesTest {
     }
 
     @Test
-    @DisplayName("all built-in entries are present and parse under schema v2")
+    @DisplayName("all built-in entries are present and parse under schema v3")
     void allBuiltinEntriesParse() throws IOException {
         List<Loaded> loaded = loadAll();
         assertEquals(EXPECTED_ENTRY_COUNT, loaded.size(),
@@ -84,11 +84,11 @@ class BuiltinEntriesTest {
     }
 
     @Test
-    @DisplayName("every built-in entry is schema_version 2 and uses placement.mode home")
+    @DisplayName("every built-in entry is schema_version 3 and uses placement.mode home")
     void schemaAndModeAreUniform() throws IOException {
         for (Loaded loaded : loadAll()) {
             JsonObject json = loaded.json();
-            assertEquals(2, json.get("schema_version").getAsInt(), loaded.name() + ": schema_version");
+            assertEquals(3, json.get("schema_version").getAsInt(), loaded.name() + ": schema_version");
             assertEquals("home", json.getAsJsonObject("placement").get("mode").getAsString(),
                     loaded.name() + ": placement.mode");
             assertTrue(json.getAsJsonObject("placement").has("home"),
@@ -130,16 +130,28 @@ class BuiltinEntriesTest {
             JsonObject home = json.getAsJsonObject("placement").getAsJsonObject("home");
             for (String key : List.of("offset", "force_place", "search_failure_fallback", "search_down",
                     "search_up", "horizontal_radius", "require_ground", "avoid_fluids",
-                    "avoid_blocks", "protected_blocks")) {
+                    "avoid_blocks", "protected_blocks", "place_delay_ticks")) {
                 assertTrue(home.has(key), name + ": placement.home." + key + " must be explicit");
             }
 
             for (String key : List.of("player_kill_only", "dimensions", "biomes")) {
                 assertTrue(json.getAsJsonObject("death").has(key), name + ": death." + key);
             }
-            for (String key : List.of("delay_ticks", "require_player_nearby", "player_range", "allow_peaceful",
-                    "count", "spawn_offset", "nbt", "finalize_spawn", "max_attempts", "retry_interval_ticks")) {
-                assertTrue(json.getAsJsonObject("spawn").has(key), name + ": spawn." + key);
+            JsonObject spawn = json.getAsJsonObject("spawn");
+            assertTrue(spawn.has("mode"), name + ": spawn.mode must be explicit");
+            String spawnMode = spawn.get("mode").getAsString();
+            String spawnModeKey = "transform".equals(spawnMode) ? "transform" : "summon";
+            assertTrue(spawn.has(spawnModeKey), name + ": spawn." + spawnModeKey + " must match spawn.mode");
+            assertTrue(spawn.get(spawnModeKey).isJsonObject(),
+                    name + ": spawn." + spawnModeKey + " must be an object");
+            JsonObject spawnFields = spawn.getAsJsonObject(spawnModeKey);
+            List<String> spawnKeys = "transform".equals(spawnMode)
+                    // Only what a hand-off can use: one block, an animation delay, the Peaceful gate and NBT.
+                    ? List.of("transform_block", "delay_ticks", "allow_peaceful", "nbt")
+                    : List.of("delay_ticks", "require_player_nearby", "player_range", "allow_peaceful",
+                    "count", "spawn_offset", "nbt", "finalize_spawn", "max_attempts", "retry_interval_ticks");
+            for (String key : spawnKeys) {
+                assertTrue(spawnFields.has(key), name + ": spawn." + spawnModeKey + "." + key);
             }
             for (String key : List.of("mode", "search_radius")) {
                 assertTrue(json.getAsJsonObject("duplicate").has(key), name + ": duplicate." + key);
@@ -329,10 +341,25 @@ class BuiltinEntriesTest {
             assertEquals(duplicate.get("search_radius").getAsInt(), loaded.entry().duplicate().searchRadius(), name);
 
             JsonObject spawn = loaded.json().getAsJsonObject("spawn");
-            assertEquals(spawn.get("delay_ticks").getAsInt(), loaded.entry().spawn().delayTicks(), name);
-            assertEquals(spawn.get("count").getAsInt(), loaded.entry().spawn().count(), name);
-            assertEquals(spawn.get("max_attempts").getAsInt(), loaded.entry().spawn().maxAttempts(), name);
-            assertEquals(spawn.get("retry_interval_ticks").getAsInt(), loaded.entry().spawn().retryIntervalTicks(), name);
+            String spawnMode = spawn.get("mode").getAsString();
+            RespawnEntry.SpawnRule rule = loaded.entry().spawn();
+            assertEquals(RespawnEntry.SpawnMode.valueOf(spawnMode.toUpperCase()), rule.mode(), name + ": spawn.mode");
+
+            if (rule.mode() == RespawnEntry.SpawnMode.TRANSFORM) {
+                JsonObject transform = spawn.getAsJsonObject("transform");
+                assertEquals(transform.get("delay_ticks").getAsInt(), rule.transform().delayTicks(), name);
+                assertEquals(transform.get("allow_peaceful").getAsBoolean(),
+                        rule.transform().allowPeaceful(), name);
+                assertTrue(rule.summon() == null, name + ": a transform rule must not carry a summon object");
+            } else {
+                JsonObject summon = spawn.getAsJsonObject("summon");
+                assertEquals(summon.get("delay_ticks").getAsInt(), rule.summon().delayTicks(), name);
+                assertEquals(summon.get("count").getAsInt(), rule.summon().count(), name);
+                assertEquals(summon.get("max_attempts").getAsInt(), rule.summon().maxAttempts(), name);
+                assertEquals(summon.get("retry_interval_ticks").getAsInt(),
+                        rule.summon().retryIntervalTicks(), name);
+                assertTrue(rule.transform() == null, name + ": a summon rule must not carry a transform object");
+            }
 
             JsonObject activation = loaded.json().getAsJsonObject("activation");
             assertEquals(activation.get("amount").getAsInt(), loaded.entry().activation().amount(), name);

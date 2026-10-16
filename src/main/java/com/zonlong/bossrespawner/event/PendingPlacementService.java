@@ -70,11 +70,55 @@ public final class PendingPlacementService {
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
         MinecraftServer server = event.getServer();
+        // Delayed placements have a tick deadline, so they need a per-tick check: the 100-tick sweep would
+        // overshoot a death animation by seconds. This is cheap because the queue is empty on almost every
+        // tick, and when it is not, {@link BossHomeSavedData#pendingView()} allocates nothing.
+        runDuePlacements(server);
         drainTriggered(server);
 
         if (++ticksSinceSweep >= SWEEP_INTERVAL_TICKS) {
             ticksSinceSweep = 0;
             sweep(server);
+        }
+    }
+
+    /**
+     * Runs queued tasks whose {@code place_delay_ticks} has elapsed and whose target chunk is already
+     * loaded.
+     *
+     * <p>Tasks that are due but whose chunk is not loaded are deliberately left alone: {@link #finish} would
+     * re-defer them, and doing that every tick would be a busy loop. The chunk-load trigger and the sweep
+     * pick those up. A task whose dimension has vanished is likewise left to the sweep, which fails and
+     * cleans it up.
+     */
+    private static void runDuePlacements(MinecraftServer server) {
+        BossHomeSavedData data = BossHomeSavedData.get(server);
+        if (data.pendingCount() == 0) {
+            return;
+        }
+
+        long now = server.overworld().getGameTime();
+        List<PendingPlacementTask> due = null;
+        for (PendingPlacementTask task : data.pendingView()) {
+            if (!task.isDue(now)) {
+                continue;
+            }
+            ServerLevel level = server.getLevel(task.targetDimension());
+            if (level == null || !level.isLoaded(task.targetBase())) {
+                continue;
+            }
+            if (due == null) {
+                due = new ArrayList<>();
+            }
+            due.add(task);
+        }
+        if (due == null) {
+            return;
+        }
+
+        DebugLog.info("Running {} delayed placement(s) whose place_delay_ticks elapsed", due.size());
+        for (PendingPlacementTask task : due) {
+            finish(server, data, task);
         }
     }
 
@@ -112,7 +156,14 @@ public final class PendingPlacementService {
                 ref.dimension().location(), ref.chunkPos(), tasks.size());
 
         ServerLevel level = server.getLevel(ref.dimension());
+        long now = server.overworld().getGameTime();
         for (PendingPlacementTask task : tasks) {
+            if (!task.isDue(now)) {
+                // A chunk load must not shortcut place_delay_ticks; runDuePlacements runs it when due.
+                DebugLog.info("Pending placement at {} is queued but its delay has not elapsed ({} < {})",
+                        task.targetBase(), now, task.notBeforeGameTime());
+                continue;
+            }
             if (level != null && !level.isLoaded(task.targetBase())) {
                 // Loaded and unloaded again before this tick; the sweep will pick it up later.
                 DebugLog.info("Pending placement at {} is queued but its chunk is not loaded yet",
@@ -136,7 +187,13 @@ public final class PendingPlacementService {
         List<PendingPlacementTask> tasks = data.pendingPlacements();
         int retried = 0;
         int stillWaiting = 0;
+        long now = server.overworld().getGameTime();
         for (PendingPlacementTask task : tasks) {
+            if (!task.isDue(now)) {
+                // Counted as waiting, not retried: the per-tick pass owns delayed tasks.
+                stillWaiting++;
+                continue;
+            }
             ServerLevel level = server.getLevel(task.targetDimension());
             if (level != null && !level.isLoaded(task.targetBase())) {
                 stillWaiting++;

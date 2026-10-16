@@ -107,13 +107,13 @@ saves/<存档名>/datapacks/acceptance-datapack/
 
 ---
 
-## 2. Schema v2 解析（负向路径）
+## 2. Schema v3 解析（负向路径）
 
 `/reload` 后查看日志。三条负向规则应当各自给出**不同**的警告，且都不影响其他规则。
 
 | # | 预期日志（关键片段） |
 |---|---|
-| R1 | `Respawn entry acceptance:07_rejected_v1_schema uses unsupported schema_version 1 (expected 2), skipping` |
+| R1 | `Respawn entry acceptance:07_rejected_v1_schema uses unsupported schema_version 1 (expected 3), skipping` |
 | R2 | `Respawn entry acceptance:08_rejected_flat_placement uses the schema v1 flat placement layout. Schema v1 is no longer supported; add "mode" and move the placement fields into "death" or "home".` |
 | R3 | `Respawn entry acceptance:09_rejected_missing_mode is missing the required placement.mode (expected "death" or "home"), skipping` |
 
@@ -437,7 +437,7 @@ saves/<存档名>/datapacks/acceptance-datapack/
 | 编号 | 项目 | 结果 | 备注 / 日志片段 |
 |---|---|---|---|
 | S1 | 冒烟 + 高亮 | ☐ 通过 ☐ 失败 | |
-| R1–R4 | schema v2 解析与拒绝 | ☐ 通过 ☐ 失败 | |
+| R1–R4 | Schema v3 解析与拒绝 | ☐ 通过 ☐ 失败 | |
 | H1 | 首次观察登记 | ☐ 通过 ☐ 失败 | |
 | H2 | 移动不覆盖 | ☐ 通过 ☐ 失败 | |
 | H3 | 旧存档首次加载登记 | ☐ 通过 ☐ 失败 | |

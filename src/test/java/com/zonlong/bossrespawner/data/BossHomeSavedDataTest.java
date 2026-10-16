@@ -40,11 +40,11 @@ class BossHomeSavedDataTest {
     private static RespawnEntry entry(String entity, String placementBody) {
         JsonObject root = JsonParser.parseString("""
                 {
-                  "schema_version": 2,
+                  "schema_version": 3,
                   "entity": "%s",
                   "activation": { "item": "minecraft:echo_shard", "amount": 3, "consume": false },
                   "placement": %s,
-                  "spawn": { "count": 2, "delay_ticks": 7, "nbt": "{Glowing:1b}" },
+                  "spawn": { "mode": "summon", "summon": { "count": 2, "delay_ticks": 7, "nbt": "{Glowing:1b}" } },
                   "duplicate": { "mode": "keep_existing", "search_radius": 12 }
                 }
                 """.formatted(entity, placementBody)).getAsJsonObject();
@@ -77,7 +77,14 @@ class BossHomeSavedDataTest {
 
     private static PendingPlacementTask task(ResourceKey<Level> dimension, BlockPos base, UUID source,
                                              HomeRecord homeSnapshot, RespawnRuleSnapshot rules) {
-        return new PendingPlacementTask(dimension, base, source, WARDEN, homeSnapshot, rules, 1234L);
+        // No place_delay_ticks: due as soon as it is queued, which is the pre-v3 behaviour.
+        return new PendingPlacementTask(dimension, base, source, WARDEN, homeSnapshot, rules, 1234L, 1234L);
+    }
+
+    private static PendingPlacementTask delayedTask(ResourceKey<Level> dimension, BlockPos base, UUID source,
+                                                   HomeRecord homeSnapshot, RespawnRuleSnapshot rules,
+                                                   long notBefore) {
+        return new PendingPlacementTask(dimension, base, source, WARDEN, homeSnapshot, rules, 1234L, notBefore);
     }
 
     private static long chunkOf(BlockPos pos) {
@@ -359,15 +366,29 @@ class BossHomeSavedDataTest {
     }
 
     private static void assertSpawnEquals(RespawnEntry.SpawnRule expected, RespawnEntry.SpawnRule actual) {
-        assertEquals(expected.delayTicks(), actual.delayTicks());
-        assertEquals(expected.requirePlayerNearby(), actual.requirePlayerNearby());
-        assertEquals(expected.playerRange(), actual.playerRange());
-        assertEquals(expected.allowPeaceful(), actual.allowPeaceful());
-        assertEquals(expected.count(), actual.count());
-        assertArrayEquals(expected.spawnOffset(), actual.spawnOffset());
-        assertEquals(expected.nbt(), actual.nbt());
-        assertEquals(expected.finalizeSpawn(), actual.finalizeSpawn());
-        assertEquals(expected.maxAttempts(), actual.maxAttempts());
-        assertEquals(expected.retryIntervalTicks(), actual.retryIntervalTicks());
+        assertEquals(expected.mode(), actual.mode());
+        assertEquals(expected.summon() == null, actual.summon() == null);
+        assertEquals(expected.transform() == null, actual.transform() == null);
+        assertEquals(expected.nbt(), actual.nbt(), "spawn nbt (either mode)");
+        if (expected.summon() != null) {
+            RespawnEntry.SummonRule e = expected.summon();
+            RespawnEntry.SummonRule a = actual.summon();
+            assertEquals(e.delayTicks(), a.delayTicks());
+            assertEquals(e.requirePlayerNearby(), a.requirePlayerNearby());
+            assertEquals(e.playerRange(), a.playerRange());
+            assertEquals(e.allowPeaceful(), a.allowPeaceful());
+            assertEquals(e.count(), a.count());
+            assertArrayEquals(e.spawnOffset(), a.spawnOffset());
+            assertEquals(e.finalizeSpawn(), a.finalizeSpawn());
+            assertEquals(e.maxAttempts(), a.maxAttempts());
+            assertEquals(e.retryIntervalTicks(), a.retryIntervalTicks());
+        }
+        if (expected.transform() != null) {
+            RespawnEntry.TransformRule e = expected.transform();
+            RespawnEntry.TransformRule a = actual.transform();
+            assertEquals(e.block(), a.block());
+            assertEquals(e.delayTicks(), a.delayTicks());
+            assertEquals(e.allowPeaceful(), a.allowPeaceful());
+        }
     }
 }

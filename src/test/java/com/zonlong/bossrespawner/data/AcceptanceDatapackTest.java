@@ -44,7 +44,11 @@ class AcceptanceDatapackTest {
             "05_no_fallback.json",
             "06_duplicate_keep_existing.json");
 
-    /** Entries that must be rejected, each for a different reason. */
+    /**
+     * Entries that must be rejected: the v1 structure, the v1 flat placement layout and a missing
+     * {@code placement.mode}. The latter two still declare {@code schema_version: 2}, which v3 refuses
+     * outright - the layouts themselves are pinned against a valid v3 body in {@code RespawnEntrySchemaTest}.
+     */
     private static final List<String> INVALID = List.of(
             "07_rejected_v1_schema.json",
             "08_rejected_flat_placement.json",
@@ -90,6 +94,19 @@ class AcceptanceDatapackTest {
             assertTrue(parsed.isPresent(), name + " must parse; the checklist depends on it");
             assertFalse(parsed.get().activation().consume(),
                     name + ": acceptance keys must not be consumed, so a tester never runs out");
+
+            // The pack is schema v3: nested spawn and an explicit place_delay_ticks in the selected
+            // placement mode object. A tester copies this pack in game, so it must not fall back to
+            // defaults or rely on the v2 layout.
+            JsonObject json = read(file);
+            assertEquals(3, json.get("schema_version").getAsInt(), name + ": schema_version");
+            JsonObject spawn = json.getAsJsonObject("spawn");
+            assertEquals("summon", spawn.get("mode").getAsString(), name + ": spawn.mode");
+            assertTrue(spawn.getAsJsonObject("summon").has("delay_ticks"), name + ": spawn.summon");
+            JsonObject modeObject = json.getAsJsonObject("placement")
+                    .getAsJsonObject(parsed.get().placement().mode() == RespawnEntry.PlacementMode.HOME
+                            ? "home" : "death");
+            assertTrue(modeObject.has("place_delay_ticks"), name + ": placement.<mode>.place_delay_ticks");
         }
 
         // Home vs death anchors.
@@ -139,12 +156,12 @@ class AcceptanceDatapackTest {
     }
 
     @Test
-    @DisplayName("each negative entry fails for the reason the checklist expects")
+    @DisplayName("each negative entry carries the shape the checklist expects, and is rejected")
     void negativeEntriesFailForDistinctReasons() throws IOException {
-        // R1: schema_version 1.
+        // R1: schema_version 1 - the v1 structure, rejected by the version gate.
         assertEquals(1, read(ENTRIES.resolve("07_rejected_v1_schema.json")).get("schema_version").getAsInt());
 
-        // R2: schema_version 2 but a flat placement with no mode - the dedicated v1-layout detection.
+        // R2: the schema v1 flat placement layout - fields straight under "placement" and no mode.
         JsonObject flat = read(ENTRIES.resolve("08_rejected_flat_placement.json"));
         assertEquals(2, flat.get("schema_version").getAsInt());
         assertTrue(flat.getAsJsonObject("placement").has("offset"),
@@ -155,8 +172,19 @@ class AcceptanceDatapackTest {
         JsonObject noMode = read(ENTRIES.resolve("09_rejected_missing_mode.json"));
         assertEquals(2, noMode.get("schema_version").getAsInt());
         assertTrue(noMode.getAsJsonObject("placement").has("home"),
-                "09 must have a valid mode object, so only the missing mode rejects it");
+                "09 must have a valid mode object so that the missing mode is the layout it documents");
         assertFalse(noMode.getAsJsonObject("placement").has("mode"));
+
+        // Both files keep the v2 layout on purpose: under v3 they are rejected by the schema_version gate
+        // before placement or spawn is read. The dedicated "flat placement" / "missing placement.mode"
+        // warnings are pinned by RespawnEntrySchemaTest against a valid v3 body instead.
+        for (String name : List.of("08_rejected_flat_placement.json", "09_rejected_missing_mode.json")) {
+            JsonObject v2 = read(ENTRIES.resolve(name));
+            assertTrue(v2.getAsJsonObject("spawn").has("delay_ticks"),
+                    name + ": the flat v2 spawn fields must stay, so the file documents the v2 structure");
+            assertFalse(v2.getAsJsonObject("spawn").has("mode"),
+                    name + ": a v2 file has no spawn.mode");
+        }
     }
 
     @Test

@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.zonlong.bossrespawner.UniversalBossRespawner;
 
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -14,18 +15,20 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * One parsed {@code boss_respawner} JSON rule (schema v2).
+ * One parsed {@code boss_respawner} JSON rule (schema v3).
  *
  * <pre>
  * data/&lt;namespace&gt;/boss_respawner/entries/&lt;any-name&gt;.json
  * </pre>
  *
- * <p>Schema v2 requires {@code schema_version}, {@code entity}, {@code activation.item},
- * {@code placement.mode} and the mode-specific object ({@code placement.death} or
- * {@code placement.home}) to be present explicitly. Everything else uses code defaults.
+ * <p>Schema v3 requires {@code schema_version}, {@code entity}, {@code activation.item},
+ * {@code placement.mode} with its mode object ({@code placement.death} or {@code placement.home}), and
+ * {@code spawn.mode} with its mode object ({@code spawn.summon} or {@code spawn.transform}). Everything
+ * else uses code defaults.
  *
- * <p>Schema v1 entries (flat {@code placement} without {@code mode}) are rejected rather than
- * silently reinterpreted; see {@link PlacementRule#fromJson}.
+ * <p>Older layouts are rejected rather than silently reinterpreted, and the message names the real cause:
+ * schema v1 put the placement fields directly under {@code placement}, and schema v2 put the spawn fields
+ * directly under {@code spawn}.
  */
 public record RespawnEntry(
         ResourceLocation id,
@@ -39,7 +42,24 @@ public record RespawnEntry(
         DuplicateRule duplicate) {
 
     /** The only supported {@code schema_version}. Any other value makes the entry be skipped. */
-    public static final int SCHEMA_VERSION = 2;
+    public static final int SCHEMA_VERSION = 3;
+
+    /**
+     * Explains a schema version mismatch in terms of the layout that was actually used, so the fix is
+     * obvious instead of looking like a typo.
+     */
+    private static String layoutHint(JsonObject root, int version) {
+        if (version == 2) {
+            return " - schema v2 put the spawn fields directly under \"spawn\"; v3 requires \"spawn.mode\" "
+                    + "and nests them under \"spawn.summon\" or \"spawn.transform\". See README for the "
+                    + "v2 -> v3 mapping";
+        }
+        if (version == 1) {
+            return " - schema v1 put the placement fields directly under \"placement\"; see README for the "
+                    + "v1 -> v3 mapping";
+        }
+        return "";
+    }
 
     /** Selects which position the respawn cage is anchored to. */
     public enum PlacementMode {
@@ -68,8 +88,8 @@ public record RespawnEntry(
             int schemaVersion = schemaElement.getAsInt();
             if (schemaVersion != SCHEMA_VERSION) {
                 UniversalBossRespawner.LOGGER.warn(
-                        "Respawn entry {} uses unsupported schema_version {} (expected {}), skipping",
-                        id, schemaVersion, SCHEMA_VERSION);
+                        "Respawn entry {} uses unsupported schema_version {} (expected {}), skipping{}",
+                        id, schemaVersion, SCHEMA_VERSION, layoutHint(root, schemaVersion));
                 return Optional.empty();
             }
 
@@ -93,12 +113,15 @@ public record RespawnEntry(
             }
 
             DeathRule death = DeathRule.fromJson(getObject(root, "death"));
-            SpawnRule spawn = SpawnRule.fromJson(getObject(root, "spawn"));
+            Optional<SpawnRule> spawn = SpawnRule.fromJson(id, getObject(root, "spawn"));
+            if (spawn.isEmpty()) {
+                return Optional.empty();
+            }
             DuplicateRule duplicate = DuplicateRule.fromJson(getObject(root, "duplicate"));
 
             return Optional.of(new RespawnEntry(
                     id, true, priority, List.copyOf(entities), activation,
-                    placement.get(), death, spawn, duplicate));
+                    placement.get(), death, spawn.get(), duplicate));
         } catch (Exception e) {
             UniversalBossRespawner.LOGGER.warn("Failed to parse respawn entry {}: {}", id, e.toString());
             return Optional.empty();
@@ -229,7 +252,8 @@ public record RespawnEntry(
     public record PlacementRule(PlacementMode mode, int[] offset, boolean forcePlace,
                                 boolean searchFailureFallback, int searchDown, int searchUp,
                                 int horizontalRadius, boolean requireGround, boolean avoidFluids,
-                                Set<ResourceLocation> avoidBlocks, Set<ResourceLocation> protectedBlocks) {
+                                Set<ResourceLocation> avoidBlocks, Set<ResourceLocation> protectedBlocks,
+                                int placeDelayTicks) {
 
         /**
          * Parses {@code placement} and resolves the mode-specific object.
@@ -290,7 +314,8 @@ public record RespawnEntry(
                     getBoolean(obj, "require_ground", true),
                     getBoolean(obj, "avoid_fluids", false),
                     parseBlockIds(entryId, obj, "avoid_blocks"),
-                    parseBlockIds(entryId, obj, "protected_blocks")));
+                    parseBlockIds(entryId, obj, "protected_blocks"),
+                    Math.max(0, getInt(obj, "place_delay_ticks", 0))));
         }
 
         /**
@@ -347,10 +372,131 @@ public record RespawnEntry(
         }
     }
 
-    public record SpawnRule(int delayTicks, boolean requirePlayerNearby, double playerRange,
-                            boolean allowPeaceful, int count, int[] spawnOffset, String nbt,
-                            boolean finalizeSpawn, int maxAttempts, int retryIntervalTicks) {
-        static SpawnRule fromJson(JsonObject obj) {
+    /**
+     * How the boss is produced once the cage is activated.
+     */
+    public enum SpawnMode {
+        /** Create {@code entity} directly. The original behaviour. */
+        SUMMON,
+        /**
+         * Replace the cage with {@code transform_block} and let that block produce the boss.
+         *
+         * <p>This exists because some bosses are not one entity: Twilight Forest's Phantom Knight is six
+         * entities tied together by proximity, and a lone one would take the "last knight standing" branch —
+         * handing out the whole boss reward and marking the Knight Stronghold conquered after a single kill.
+         * The mod's own boss spawner blocks reproduce the fight exactly (correct count, numbering, home
+         * point and loot), so the cage hands over to them instead.
+         */
+        TRANSFORM
+    }
+
+    /**
+     * Resolved {@code spawn}: a mode plus the one object that belongs to it.
+     *
+     * <p>Unlike {@code placement}, the two mode objects do <em>not</em> share a field set — summoning an
+     * entity and handing over to a block have almost nothing in common — so they are separate records
+     * rather than one flattened set. Only the selected object needs to be present.
+     */
+    public record SpawnRule(SpawnMode mode, @Nullable SummonRule summon, @Nullable TransformRule transform) {
+
+        /**
+         * The NBT text of whichever mode applies — an entity tag for summon, a block entity tag for
+         * transform. Both are optional and default to empty.
+         */
+        public String nbt() {
+            if (transform != null) {
+                return transform.nbt();
+            }
+            return summon != null ? summon.nbt() : "";
+        }
+
+        /**
+         * @return empty (with a {@code warn}) when {@code spawn.mode} is missing or unknown, when the
+         *         selected mode object is absent, or when {@code transform} names no usable block
+         */
+        static Optional<SpawnRule> fromJson(ResourceLocation entryId, JsonObject spawnObj) {
+            String modeName = getString(spawnObj, "mode", "");
+            if (modeName.isBlank()) {
+                if (looksLikeFlatSpawn(spawnObj)) {
+                    UniversalBossRespawner.LOGGER.warn(
+                            "Respawn entry {} uses the schema v2 flat spawn layout. Schema v2 is no longer "
+                                    + "supported; add \"mode\" and move the spawn fields into \"summon\". "
+                                    + "See README for the v2 -> v3 mapping.",
+                            entryId);
+                } else {
+                    UniversalBossRespawner.LOGGER.warn(
+                            "Respawn entry {} is missing the required spawn.mode "
+                                    + "(expected \"summon\" or \"transform\"), skipping",
+                            entryId);
+                }
+                return Optional.empty();
+            }
+
+            SpawnMode mode = switch (modeName) {
+                case "summon" -> SpawnMode.SUMMON;
+                case "transform" -> SpawnMode.TRANSFORM;
+                default -> null;
+            };
+            if (mode == null) {
+                UniversalBossRespawner.LOGGER.warn(
+                        "Respawn entry {} has invalid spawn.mode \"{}\" (expected \"summon\" or "
+                                + "\"transform\"), skipping",
+                        entryId, modeName);
+                return Optional.empty();
+            }
+
+            String modeKey = mode == SpawnMode.SUMMON ? "summon" : "transform";
+            JsonElement modeElement = spawnObj.get(modeKey);
+            if (modeElement == null || !modeElement.isJsonObject()) {
+                UniversalBossRespawner.LOGGER.warn(
+                        "Respawn entry {} selects spawn.mode \"{}\" but has no spawn.{} object, skipping",
+                        entryId, modeName, modeKey);
+                return Optional.empty();
+            }
+            JsonObject obj = modeElement.getAsJsonObject();
+
+            if (mode == SpawnMode.TRANSFORM) {
+                String raw = getString(obj, "transform_block", "");
+                ResourceLocation block = raw.isBlank() ? null : ResourceLocation.tryParse(raw);
+                if (block == null) {
+                    UniversalBossRespawner.LOGGER.warn(
+                            "Respawn entry {} uses spawn.mode \"transform\" but has no valid "
+                                    + "spawn.transform.transform_block, skipping",
+                            entryId);
+                    return Optional.empty();
+                }
+                // No registry lookup on purpose, matching how entity ids are handled: a rule may name
+                // content from a mod that is not installed, and it simply never fires. Resolving the block
+                // at parse time would also break the parser's independence from registry state.
+                return Optional.of(new SpawnRule(mode, null, new TransformRule(
+                        block,
+                        Math.max(0, getInt(obj, "delay_ticks", 20)),
+                        getBoolean(obj, "allow_peaceful", false),
+                        getString(obj, "nbt", ""))));
+            }
+
+            return Optional.of(new SpawnRule(mode, SummonRule.fromJson(obj), null));
+        }
+
+        /** Detects the schema v2 flat layout so the rejection message can name the real cause. */
+        private static boolean looksLikeFlatSpawn(JsonObject spawnObj) {
+            for (String legacyKey : new String[]{"delay_ticks", "require_player_nearby", "player_range",
+                    "allow_peaceful", "count", "spawn_offset", "nbt", "finalize_spawn", "max_attempts",
+                    "retry_interval_ticks", "transform_block"}) {
+                if (spawnObj.has(legacyKey)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    /** {@code spawn.summon}: create the entity directly. */
+    public record SummonRule(int delayTicks, boolean requirePlayerNearby, double playerRange,
+                             boolean allowPeaceful, int count, int[] spawnOffset, String nbt,
+                             boolean finalizeSpawn, int maxAttempts, int retryIntervalTicks) {
+
+        static SummonRule fromJson(JsonObject obj) {
             int delayTicks = Math.max(0, getInt(obj, "delay_ticks", 20));
             boolean requirePlayerNearby = getBoolean(obj, "require_player_nearby", true);
             double playerRange = Math.max(1.0D, getDouble(obj, "player_range", 9.0D));
@@ -366,9 +512,28 @@ public record RespawnEntry(
                 maxAttempts = 20;
             }
             int retryIntervalTicks = Math.max(1, getInt(obj, "retry_interval_ticks", 4));
-            return new SpawnRule(delayTicks, requirePlayerNearby, playerRange, allowPeaceful,
+            return new SummonRule(delayTicks, requirePlayerNearby, playerRange, allowPeaceful,
                     count, spawnOffset, nbt, finalizeSpawn, maxAttempts, retryIntervalTicks);
         }
+    }
+
+    /**
+     * {@code spawn.transform}: keep the cage lit for {@code delayTicks} so its opening animation plays, then
+     * replace the cage with {@code block} and let that block produce the boss.
+     *
+     * <p>Only four fields, because most of the summon path has no meaning here: there is one block rather
+     * than a count of entities, it lands on the cage's own position rather than at an offset, and
+     * {@code setBlock} on that position cannot fail, so the attempt limits have nothing to govern.
+     *
+     * @param block         the block to become; resolved again when the animation ends
+     * @param delayTicks    how long the cage stays lit before the swap
+     * @param allowPeaceful whether the swap may happen on Peaceful. Boss spawner blocks generally refuse to
+     *                      fire there — and Twilight Forest's are unbreakable — so refusing by default
+     *                      avoids stranding a block the player cannot remove
+     * @param nbt           NBT written to the new block's block entity, exactly as the trailing tag of a
+     *                      {@code /setblock} command would be. Empty leaves the block entity untouched
+     */
+    public record TransformRule(ResourceLocation block, int delayTicks, boolean allowPeaceful, String nbt) {
     }
 
     public record DuplicateRule(String mode, int searchRadius) {

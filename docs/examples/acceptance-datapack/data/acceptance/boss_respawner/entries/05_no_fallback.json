@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "enabled": true,
   "priority": 0,
   "entity": "minecraft:blaze",
@@ -12,6 +12,7 @@
     "mode": "home",
     "home": {
       "offset": [0, 0, 0],
+      "place_delay_ticks": 0,
       "force_place": false,
       "search_failure_fallback": false,
       "search_down": 0,
@@ -29,16 +30,19 @@
     "biomes": []
   },
   "spawn": {
-    "delay_ticks": 20,
-    "require_player_nearby": false,
-    "player_range": 9.0,
-    "allow_peaceful": false,
-    "count": 1,
-    "spawn_offset": [0, 0, 0],
-    "nbt": "{PersistenceRequired:1b}",
-    "finalize_spawn": true,
-    "max_attempts": 20,
-    "retry_interval_ticks": 4
+    "mode": "summon",
+    "summon": {
+      "delay_ticks": 20,
+      "require_player_nearby": false,
+      "player_range": 9.0,
+      "allow_peaceful": false,
+      "count": 1,
+      "spawn_offset": [0, 0, 0],
+      "nbt": "{PersistenceRequired:1b}",
+      "finalize_spawn": true,
+      "max_attempts": 20,
+      "retry_interval_ticks": 4
+    }
   },
   "duplicate": {
     "mode": "allow_multiple",

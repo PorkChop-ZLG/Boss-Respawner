@@ -16,6 +16,7 @@ import net.minecraft.world.level.saveddata.SavedData;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -223,6 +224,17 @@ public class BossHomeSavedData extends SavedData {
 
     public List<PendingPlacementTask> pendingPlacements() {
         return List.copyOf(pending.values());
+    }
+
+    /**
+     * Live, allocation-free view of the queue, for the per-tick scan that runs tasks whose
+     * {@code place_delay_ticks} has elapsed.
+     *
+     * <p>Callers must only read it, and must collect anything they intend to act on before acting:
+     * finishing a task removes it from the map, which would otherwise be a concurrent modification.
+     */
+    public Collection<PendingPlacementTask> pendingView() {
+        return pending.values();
     }
 
     private void index(PendingPlacementTask task) {

@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "enabled": true,
   "priority": 0,
   "entity": "minecraft:warden",
@@ -9,13 +9,20 @@
     "consume": true
   },
   "placement": {
-    "offset": [0, 0, 0],
-    "search_down": 32,
-    "search_up": 16,
-    "horizontal_radius": 4,
-    "require_ground": true,
-    "avoid_fluids": false,
-    "avoid_blocks": ["cataclysm:boss_respawner"]
+    "mode": "death",
+    "death": {
+      "offset": [0, 0, 0],
+      "place_delay_ticks": 0,
+      "force_place": false,
+      "search_failure_fallback": true,
+      "search_down": 32,
+      "search_up": 16,
+      "horizontal_radius": 4,
+      "require_ground": true,
+      "avoid_fluids": false,
+      "avoid_blocks": ["cataclysm:boss_respawner"],
+      "protected_blocks": []
+    }
   },
   "death": {
     "player_kill_only": false,
@@ -23,16 +30,19 @@
     "biomes": []
   },
   "spawn": {
-    "delay_ticks": 20,
-    "require_player_nearby": true,
-    "player_range": 9.0,
-    "allow_peaceful": false,
-    "count": 1,
-    "spawn_offset": [0, 0, 0],
-    "nbt": "",
-    "finalize_spawn": true,
-    "max_attempts": 20,
-    "retry_interval_ticks": 4
+    "mode": "summon",
+    "summon": {
+      "delay_ticks": 20,
+      "require_player_nearby": true,
+      "player_range": 9.0,
+      "allow_peaceful": false,
+      "count": 1,
+      "spawn_offset": [0, 0, 0],
+      "nbt": "",
+      "finalize_spawn": true,
+      "max_attempts": 20,
+      "retry_interval_ticks": 4
+    }
   },
   "duplicate": {
     "mode": "allow_multiple",

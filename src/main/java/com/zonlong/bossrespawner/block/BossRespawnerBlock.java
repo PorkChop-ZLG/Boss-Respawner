@@ -89,19 +89,23 @@ public class BossRespawnerBlock extends BaseEntityBlock {
 
         DebugLog.info("Right-click accepted: activating respawner at {} with stack={}", pos, stack);
         if (!level.isClientSide) {
-            if (!player.getAbilities().instabuild && be.shouldConsume()) {
-                int paid = KeyItemPayment.drain(paymentSlots, keyItem, required);
-                if (paid < required) {
-                    // Unreachable while canPay() and drain() walk the same list in the same order; log
-                    // loudly rather than let a shortfall pass for a free summon.
-                    UniversalBossRespawner.LOGGER.warn(
-                            "Respawner at {} consumed only {} of {} required {} despite passing the payment "
-                                    + "check; please report this",
-                            pos, paid, required, be.getKeyItemId());
+            // Payment happens only once the cage confirms it acted: the transform path can refuse (target
+            // block not installed, or Peaceful without allow_peaceful), and charging for a no-op would be
+            // silently losing the player's items.
+            if (be.activate(level)) {
+                if (!player.getAbilities().instabuild && be.shouldConsume()) {
+                    int paid = KeyItemPayment.drain(paymentSlots, keyItem, required);
+                    if (paid < required) {
+                        // Unreachable while canPay() and drain() walk the same list in the same order; log
+                        // loudly rather than let a shortfall pass for a free summon.
+                        UniversalBossRespawner.LOGGER.warn(
+                                "Respawner at {} consumed only {} of {} required {} despite passing the payment "
+                                        + "check; please report this",
+                                pos, paid, required, be.getKeyItemId());
+                    }
                 }
+                level.gameEvent(GameEvent.BLOCK_CHANGE, pos, GameEvent.Context.of(player, level.getBlockState(pos)));
             }
-            be.activate(level);
-            level.gameEvent(GameEvent.BLOCK_CHANGE, pos, GameEvent.Context.of(player, level.getBlockState(pos)));
         }
         return ItemInteractionResult.sidedSuccess(level.isClientSide);
     }

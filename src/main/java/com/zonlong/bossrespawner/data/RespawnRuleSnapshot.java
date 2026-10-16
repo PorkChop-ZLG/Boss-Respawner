@@ -92,6 +92,7 @@ public record RespawnRuleSnapshot(
         tag.putBoolean("AvoidFluids", rule.avoidFluids());
         BossHomeNbt.putStringList(tag, "AvoidBlocks", toIdStrings(rule.avoidBlocks()));
         BossHomeNbt.putStringList(tag, "ProtectedBlocks", toIdStrings(rule.protectedBlocks()));
+        tag.putInt("PlaceDelayTicks", rule.placeDelayTicks());
         return tag;
     }
 
@@ -113,7 +114,9 @@ public record RespawnRuleSnapshot(
                 tag.getBoolean("RequireGround"),
                 tag.getBoolean("AvoidFluids"),
                 parseIds(BossHomeNbt.getStringList(tag, "AvoidBlocks")),
-                parseIds(BossHomeNbt.getStringList(tag, "ProtectedBlocks")));
+                parseIds(BossHomeNbt.getStringList(tag, "ProtectedBlocks")),
+                // Absent in snapshots written before schema v3, where no delay existed.
+                tag.contains("PlaceDelayTicks", Tag.TAG_INT) ? tag.getInt("PlaceDelayTicks") : 0);
     }
 
     /** Serialises a parsed block-id set back to the plain string list used on disk. */
@@ -147,31 +150,71 @@ public record RespawnRuleSnapshot(
 
     private static CompoundTag spawnToTag(RespawnEntry.SpawnRule rule) {
         CompoundTag tag = new CompoundTag();
-        tag.putInt("DelayTicks", rule.delayTicks());
-        tag.putBoolean("RequirePlayerNearby", rule.requirePlayerNearby());
-        tag.putDouble("PlayerRange", rule.playerRange());
-        tag.putBoolean("AllowPeaceful", rule.allowPeaceful());
-        tag.putInt("Count", rule.count());
-        tag.putIntArray("SpawnOffset", rule.spawnOffset());
-        tag.putString("Nbt", rule.nbt());
-        tag.putBoolean("FinalizeSpawn", rule.finalizeSpawn());
-        tag.putInt("MaxAttempts", rule.maxAttempts());
-        tag.putInt("RetryIntervalTicks", rule.retryIntervalTicks());
+        tag.putString("Mode", rule.mode().name());
+        if (rule.summon() != null) {
+            RespawnEntry.SummonRule summon = rule.summon();
+            CompoundTag s = new CompoundTag();
+            s.putInt("DelayTicks", summon.delayTicks());
+            s.putBoolean("RequirePlayerNearby", summon.requirePlayerNearby());
+            s.putDouble("PlayerRange", summon.playerRange());
+            s.putBoolean("AllowPeaceful", summon.allowPeaceful());
+            s.putInt("Count", summon.count());
+            s.putIntArray("SpawnOffset", summon.spawnOffset());
+            s.putString("Nbt", summon.nbt());
+            s.putBoolean("FinalizeSpawn", summon.finalizeSpawn());
+            s.putInt("MaxAttempts", summon.maxAttempts());
+            s.putInt("RetryIntervalTicks", summon.retryIntervalTicks());
+            tag.put("Summon", s);
+        }
+        if (rule.transform() != null) {
+            RespawnEntry.TransformRule transform = rule.transform();
+            CompoundTag t = new CompoundTag();
+            t.putString("Block", transform.block().toString());
+            t.putInt("DelayTicks", transform.delayTicks());
+            t.putBoolean("AllowPeaceful", transform.allowPeaceful());
+            t.putString("Nbt", transform.nbt());
+            tag.put("Transform", t);
+        }
         return tag;
     }
 
     private static RespawnEntry.SpawnRule spawnFromTag(CompoundTag tag) {
-        return new RespawnEntry.SpawnRule(
-                BossHomeNbt.requireInt(tag, "DelayTicks"),
-                tag.getBoolean("RequirePlayerNearby"),
-                tag.getDouble("PlayerRange"),
-                tag.getBoolean("AllowPeaceful"),
-                BossHomeNbt.requireInt(tag, "Count"),
-                BossHomeNbt.getIntArray3(tag, "SpawnOffset"),
-                tag.getString("Nbt"),
-                tag.getBoolean("FinalizeSpawn"),
-                BossHomeNbt.requireInt(tag, "MaxAttempts"),
-                BossHomeNbt.requireInt(tag, "RetryIntervalTicks"));
+        RespawnEntry.SpawnMode mode;
+        try {
+            mode = RespawnEntry.SpawnMode.valueOf(BossHomeNbt.requireString(tag, "Mode"));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("unknown spawn mode in rule snapshot: " + e.getMessage(), e);
+        }
+
+        if (mode == RespawnEntry.SpawnMode.TRANSFORM) {
+            CompoundTag t = requireCompound(tag, "Transform");
+            return new RespawnEntry.SpawnRule(mode, null, new RespawnEntry.TransformRule(
+                    BossHomeNbt.getResourceLocation(t, "Block"),
+                    t.getInt("DelayTicks"),
+                    t.getBoolean("AllowPeaceful"),
+                    t.getString("Nbt")));
+        }
+
+        CompoundTag s = requireCompound(tag, "Summon");
+        return new RespawnEntry.SpawnRule(mode, new RespawnEntry.SummonRule(
+                BossHomeNbt.requireInt(s, "DelayTicks"),
+                s.getBoolean("RequirePlayerNearby"),
+                s.getDouble("PlayerRange"),
+                s.getBoolean("AllowPeaceful"),
+                BossHomeNbt.requireInt(s, "Count"),
+                BossHomeNbt.getIntArray3(s, "SpawnOffset"),
+                s.getString("Nbt"),
+                s.getBoolean("FinalizeSpawn"),
+                BossHomeNbt.requireInt(s, "MaxAttempts"),
+                BossHomeNbt.requireInt(s, "RetryIntervalTicks")), null);
+    }
+
+    /** A snapshot with a missing mode object is unusable, so the whole task is reported as malformed. */
+    private static CompoundTag requireCompound(CompoundTag tag, String key) {
+        if (!tag.contains(key, Tag.TAG_COMPOUND)) {
+            throw new IllegalArgumentException("spawn snapshot is missing '" + key + "'");
+        }
+        return tag.getCompound(key);
     }
 
     // ------------------------------------------------------------------ duplicate
