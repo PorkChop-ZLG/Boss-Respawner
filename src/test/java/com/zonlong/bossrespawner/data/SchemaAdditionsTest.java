@@ -25,8 +25,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Schema v3: {@code spawn} became a mode plus a mode object, and {@code placement.<mode>} gained
- * {@code place_delay_ticks}.
+ * Schema v3 additions that survived into v4: {@code spawn} is a mode plus a mode object, and
+ * {@code placement.<mode>} gained {@code place_delay_ticks}.
+ *
+ * <p>The rules built here all declare {@code schema_version: 4}; v4's own change (the removal of
+ * {@code protected_blocks}) is covered by {@link RespawnEntrySchemaTest}.
  */
 class SchemaAdditionsTest {
 
@@ -180,12 +183,12 @@ class SchemaAdditionsTest {
     // ------------------------------------------------------------------ shipped rules
 
     @Test
-    @DisplayName("every built-in entry is schema v3 and uses the nested spawn layout")
-    void builtinsAreV3() throws IOException {
+    @DisplayName("every built-in entry is schema v4 and uses the nested spawn layout")
+    void builtinsAreV4() throws IOException {
         for (Path file : builtinFiles()) {
             JsonObject json = read(file);
             String name = file.getFileName().toString();
-            assertEquals(3, json.get("schema_version").getAsInt(), name);
+            assertEquals(4, json.get("schema_version").getAsInt(), name);
             JsonObject spawn = json.getAsJsonObject("spawn");
             String mode = spawn.get("mode").getAsString();
             assertTrue(List.of("summon", "transform").contains(mode), name + ": spawn.mode " + mode);
@@ -271,7 +274,7 @@ class SchemaAdditionsTest {
     private static Optional<RespawnEntry> parse(String homeJson, String spawnJson) {
         String json = """
                 {
-                  "schema_version": 3,
+                  "schema_version": 4,
                   "entity": "minecraft:warden",
                   "activation": { "item": "minecraft:echo_shard" },
                   "placement": { "mode": "home", "home": %s },

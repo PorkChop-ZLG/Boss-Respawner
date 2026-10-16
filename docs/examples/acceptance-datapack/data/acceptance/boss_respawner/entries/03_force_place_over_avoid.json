@@ -1,10 +1,11 @@
 {
-  "schema_version": 3,
+  "_comment": "POSITIVE TEST (schema v4): force_place skips the placement search entirely, so it also ignores avoid_blocks and writes at base even when base is occupied. Put a chest at home+offset, stand on it, kill the pillager: the chest is replaced, contents gone, and no 'Placement search started' line appears.",
+  "schema_version": 4,
   "enabled": true,
   "priority": 0,
-  "entity": "minecraft:vindicator",
+  "entity": "minecraft:pillager",
   "activation": {
-    "item": "minecraft:iron_ingot",
+    "item": "minecraft:gold_ingot",
     "amount": 1,
     "consume": false
   },
@@ -20,8 +21,7 @@
       "horizontal_radius": 4,
       "require_ground": true,
       "avoid_fluids": false,
-      "avoid_blocks": ["minecraft:chest"],
-      "protected_blocks": []
+      "avoid_blocks": ["minecraft:chest"]
     }
   },
   "death": {

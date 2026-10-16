@@ -41,7 +41,9 @@ import java.util.UUID;
  *   <li>{@link Outcome#DEFERRED} — the target chunk was not loaded, so a persistent task was queued and
  *       the world was left untouched;</li>
  *   <li>{@link Outcome#ABANDONED} — a permanent condition prevents placement (unknown home, unavailable
- *       dimension, protected block, disabled fallback), so no task is kept.</li>
+ *       dimension, or {@code search_failure_fallback} disabled while the search found nothing), so no task
+ *       is kept. Note that a block occupying the target is <em>not</em> such a condition: the force paths
+ *       overwrite it by design.</li>
  * </ul>
  *
  * <p>The target <em>dimension</em> is resolved before the chunk check, because an unavailable dimension

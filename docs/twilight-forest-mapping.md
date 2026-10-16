@@ -72,42 +72,37 @@
 
 ---
 
-## 二、BOSS 战利品箱：必须保护
+## 二、BOSS 战利品箱：必须避开（v4：写入 `avoid_blocks`）
 
 暮色森林的 BOSS 战利品**可能通过箱子发放**，而且它的结构（巫妖塔、迷宫、暗黑高塔、巨魔洞穴等）本身就遍布箱子。重生笼如果落在箱子位置，就会**直接顶掉箱子及其全部战利品**——而 `force_place` / `search_failure_fallback` 路径确实可能覆盖实心方块。
 
-因此暮色森林的 9 个条目把该模组的**所有 17 种箱子**写入 `placement.home.protected_blocks`，并且**只写这一个列表**。
+因此暮色森林的 9 个条目把该模组的**所有 17 种箱子**写入 `placement.home.avoid_blocks`（连同迁移过来的 `cataclysm:boss_respawner`，每条共 18 项）。
 
-### 为什么只写 protected_blocks 就够（代码层修复）
+> **⚠️ 本节在 schema v4 被改写。** v3 时代这些箱子写的是 `placement.home.protected_blocks`（一个"任何情况下都不得覆盖"的字段，并额外带一条全局 `compat.protectedBlockIds` 底线）。**v4 已把该字段与全局配置项一并删除**，因为"保护 + 搜索硬跳过"的叠加会造成 ABANDON：搜索把所有候选都当成受保护而跳过 → 无候选 → 兜底 → 写入前又被保护拒绝 → **笼子完全不出现**。实测就发生在米诺菇 / 雪怪首领 / 冰雪女王。完整推翻理由见 [Home 出生点模式设计 §5.5](home-respawn-design.md#55-avoid_blocks搜索第一趟强制避开以及为什么-v4-删除了-protected_blocks)。
 
-最初的做法是把这 17 个箱子**同时**写进 `avoid_blocks`，因为只写 `protected_blocks` 会有一个副作用：
+### 现在的语义：两趟搜索，避让只是偏好
 
-> **保护检查原本发生在搜索挑完位置之后。** 如果搜索选中的第一个合法位置正好在箱子**正上方**（目标位是空气、下方是箱子 → 命中保护），结果是**放弃本次放置，笼子根本不出现**，而不是"换个地方放"。
+`PlacementResolver.findPlacementPos` 对同一个基准点搜**两趟**：
 
-正确的修法是修代码，而不是复制配置。现在 `PlacementResolver` 在**候选校验阶段就同时参考 `protected_blocks`**：
+1. **第 1 趟**遵守 `avoid_blocks`：候选位本身或其下方命中列表时跳过该候选，换个位置继续找（这正是"把笼子放在箱子正上方"会被拦下的原因）；
+2. 第 1 趟一无所获时，**第 2 趟忽略 `avoid_blocks`** 再搜一遍。
 
-```java
-// PlacementResolver.isRejectedByBlockLists()
-return isListed(stateId, avoidBlocks) || isListed(belowId, avoidBlocks)
-    || isListed(stateId, protectedBlocks) || isListed(belowId, protectedBlocks);
-```
+关键性质：搜索候选必须是**空气或可替换方块**，所以箱子**永远不可能成为目标位**。第 2 趟最坏的结果只是"笼子坐在箱子上面"，而不是"笼子不出现"。
 
-于是职责清晰、互不重复：
-
-| 列表 | 搜索阶段 | 写入阶段（含 force_place / fallback） |
+| 场景 | `avoid_blocks` 是否生效 | 结果 |
 |---|---|---|
-| `avoid_blocks` | 跳过该候选，**换个位置继续找** | 不参与（可被强制放置绕过） |
-| `protected_blocks` | **同样跳过该候选**，换个位置继续找 | **命中即放弃**，绝不动那个方块 |
+| 搜索第 1 趟 | **生效** | 换个位置继续找 |
+| 搜索第 2 趟（第 1 趟无果时） | **不生效** | 最坏情况：笼子落在箱子上面，箱子与内容原样保留 |
+| `force_place: true` | **完全不看**（不执行搜索） | **覆盖箱子**，内容蒸发不掉落 |
+| `search_failure_fallback: true` 的兜底写入 | **完全不看**（两趟都失败之后） | **覆盖箱子**，内容蒸发不掉落 |
 
-两个列表都同时检查**目标位置**和**它下方一格**，所以"把笼子放在箱子正上方"会被拦下。
+因此：
 
-这样带来的收益：
+- **不会出现"笼子静默不生成"**——两趟搜索保证只要存在任何空气/可替换候选就会放下去；
+- 17 个箱子只需维护在 `avoid_blocks` **一处**；
+- 若某条规则设了 `force_place: true`，避让列表对它毫无作用：这是刻意的"无论如何都要放下笼子"语义（见 §5.4）。
 
-- **不会出现"笼子静默不生成"**——搜索会绕开箱子去找别的位置；
-- **`avoid_blocks` 与 `protected_blocks` 不必再同步维护**，暮色森林将来新增箱子类型只需改一处；
-- 语义干净：`avoid_blocks` 是"搜索偏好"，`protected_blocks` 是"不可绕过的底线"，不再互相污染。
-
-> 该修复的回归防护见 `src/test/java/com/zonlong/bossrespawner/placement/PlacementResolverTest.java`（校验按**值**匹配而非对象身份）与 `BuiltinEntriesTest.twilightForestEntriesProtectChests`（校验箱子**只**出现在 `protected_blocks`，不得再被复制进 `avoid_blocks`）。
+> 该行为的回归防护见 `src/test/java/com/zonlong/bossrespawner/placement/PlacementResolverTest.java`（按**值**匹配而非对象身份）、`BuiltinEntriesTest.twilightForestEntriesAvoidChests`（17 个箱子必须在 `avoid_blocks` 里）与 `BuiltinEntriesTest.avoidListsAreExact`（9 条各 18 项）。
 
 ### 核实到的证据
 
@@ -117,7 +112,7 @@ return isListed(stateId, avoidBlocks) || isListed(belowId, avoidBlocks)
 | 其余 7 个 BOSS | 战利品表是 `"type": "minecraft:entity"`（直接掉物品），其中只有 `knight_phantom_defeated.json` 标为 `empty` 但仍在 pools 里给出奖杯 |
 | 结构箱子很多 | 全模组共 **44 个 `type: chest` 的战利品表**，含迷宫（`labyrinth_vault` / `labyrinth_vault_jackpot`）、巨魔洞穴（`troll_vault`）、暗黑高塔（`chests/tower_*`）、极光宫殿（`aurora_cache`）等 |
 
-### 17 种箱子方块（写入 protected_blocks）
+### 17 种箱子方块（写入 `avoid_blocks`）
 
 | 箱子（中文） | 方块 ID |
 |---|---|
@@ -135,9 +130,9 @@ return isListed(stateId, avoidBlocks) || isListed(belowId, avoidBlocks)
 
 ### ⚠️ 仍有一个缺口：原版箱子
 
-暮色森林的**部分结构也可能使用原版 `minecraft:chest`**。原版箱子不在上面这 17 个 ID 里，因此当前配置**不会**保护它们。
+暮色森林的**部分结构也可能使用原版 `minecraft:chest`**。原版箱子不在上面这 17 个 ID 里，因此当前配置**不会**避开它们。
 
-若要彻底堵住，建议把 `minecraft:chest` 与 `minecraft:trapped_chest` 加进全局 `compat.protectedBlockIds`（那样对所有模组一次生效，不用逐条写）。这一步尚未执行，等你确认。
+若要堵住，正确做法是把 `minecraft:chest` 与 `minecraft:trapped_chest` 加进**每条相关规则**的 `placement.home.avoid_blocks`（v4 起没有"全局保护列表"这种东西：`compat.protectedBlockIds` 已随 `protected_blocks` 一并删除，而且任何保护语义都无法阻止 `force_place` / 兜底写入覆盖方块）。这一步尚未执行，等你确认。
 ## 三、谜题羊（Quest Ram）的特殊说明
 
 谜题羊是本次唯一一个"不是战斗 BOSS"的条目，但它恰好最契合本模组的设计初衷：
@@ -237,11 +232,11 @@ src/main/resources/data/twilightforest/boss_respawner/entries/
 └── quest_ram.json
 ```
 
-全部使用 `mode: "home"` + `activation.item = twilightforest:magic_map_focus`，并把本模组的 **17 种箱子**写入 `protected_blocks`（见第二节；`protected_blocks` 同时参与搜索过滤，因此无需再复制进 `avoid_blocks`），其余字段沿用现有内置条目的完整模板写法。骨架：
+全部使用 `mode: "home"` + `activation.item = twilightforest:magic_map_focus`，并把本模组的 **17 种箱子**与 `cataclysm:boss_respawner` 一起写入 `avoid_blocks`（见第二节），其余字段沿用现有内置条目的完整模板写法。骨架（**v4 形态**，实际内置条目还含 `place_delay_ticks`）：
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 4,
   "enabled": true,
   "priority": 0,
   "entity": "twilightforest:naga",
@@ -257,8 +252,8 @@ src/main/resources/data/twilightforest/boss_respawner/entries/
       "horizontal_radius": 4,
       "require_ground": true,
       "avoid_fluids": false,
-      "avoid_blocks": ["cataclysm:boss_respawner"],
-      "protected_blocks": [
+      "avoid_blocks": [
+        "cataclysm:boss_respawner",
         "twilightforest:canopy_chest",
         "twilightforest:canopy_trapped_chest",
         "twilightforest:dark_chest",
@@ -276,14 +271,18 @@ src/main/resources/data/twilightforest/boss_respawner/entries/
         "twilightforest:transformation_trapped_chest",
         "twilightforest:twilight_oak_chest",
         "twilightforest:twilight_oak_trapped_chest"
-      ]
+      ],
+      "place_delay_ticks": 30
     }
   },
   "death": { "player_kill_only": false, "dimensions": [], "biomes": [] },
   "spawn": {
-    "delay_ticks": 20, "require_player_nearby": true, "player_range": 9.0, "allow_peaceful": false,
-    "count": 1, "spawn_offset": [0, 0, 0], "nbt": "", "finalize_spawn": true,
-    "max_attempts": 20, "retry_interval_ticks": 4
+    "mode": "summon",
+    "summon": {
+      "delay_ticks": 20, "require_player_nearby": true, "player_range": 9.0, "allow_peaceful": false,
+      "count": 1, "spawn_offset": [0, 0, 0], "nbt": "", "finalize_spawn": true,
+      "max_attempts": 20, "retry_interval_ticks": 4
+    }
   },
   "duplicate": { "mode": "allow_multiple", "search_radius": 16 }
 }

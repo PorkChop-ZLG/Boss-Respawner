@@ -12,9 +12,6 @@
   "boss_respawner.configuration.debug": "调试",
   "boss_respawner.configuration.debug.button": "编辑",
   "boss_respawner.configuration.debug.tooltip": "调试日志设置。",
-  "boss_respawner.configuration.compat": "兼容",
-  "boss_respawner.configuration.compat.button": "编辑",
-  "boss_respawner.configuration.compat.tooltip": "与其它模组共存时的兼容设置。",
 
   "boss_respawner.configuration.debug.debugInfo": "调试信息",
   "boss_respawner.configuration.debug.debugInfo.tooltip": "在日志中打印Boss重生笼的调试信息。",
@@ -25,8 +22,6 @@
   "boss_respawner.configuration.general.highlightBossRespawner.tooltip": "为重生笼添加发光描边，方便玩家透过方块寻找重生笼。",
   "boss_respawner.configuration.general.highlightBossRespawnerRange": "高亮距离",
   "boss_respawner.configuration.general.highlightBossRespawnerRange.tooltip": "重生笼高亮显示的最大距离，单位为格。默认：32。",
-  "boss_respawner.configuration.compat.protectedBlockIds": "受保护方块ID",
-  "boss_respawner.configuration.compat.protectedBlockIds.tooltip": "本模组在任何情况下都不得覆盖这些方块，即使规则设了 force_place。规则里的 protected_blocks 只能追加，不能移除这里的条目。",
 
   "boss_respawner.jade.boss": "复活：%s",
   "boss_respawner.jade.amount": "×%s",

@@ -234,9 +234,9 @@ serverLevel.addFreshEntity(entity)
 |---|---|---|
 | 总开关 | 无全局文件，按 Boss `CMCommonConfig` | `Config.general.enableMod` |
 | Boss 级规则 | Java 类内硬编码 + `CMCommonConfig.respawner` | JSON `RespawnEntry` |
-| 日志 | 无统一日志开关 | `Config.general.logPlacement` |
-| 兼容避让 | 无 | `Config.compat.foreignCageBlockIds` |
-| 每区块限制 | 无 | `Config.limits.maxCagesPerChunk` |
+| 日志 | 无统一日志开关 | `Config.debug.debugInfo`（旧名 `general.logPlacement`） |
+| 兼容避让 | 无 | 每条 JSON 的 `placement.<mode>.avoid_blocks`（v4 起唯一的方块列表；`Config.compat.foreignCageBlockIds` 与 `compat.protectedBlockIds` 均已删除） |
+| 每区块限制 | 无 | 已移除（不再有每区块重生笼数量上限） |
 | 数据包刷新 | 无 | `/reload` 自动重载 |
 
 ---
@@ -295,7 +295,7 @@ Boss 死亡 -> AfterDefeatBoss()
 
 4. **兼容性**
    - 灾变只关心自己的 Boss。
-   - 本模组通过 `foreignCageBlockIds`、未知实体跳过、可选依赖等方式降低对其他模组的副作用。
+   - 本模组通过每条规则的 `avoid_blocks`（v4 起唯一的方块列表；旧的全局 `foreignCageBlockIds` / `compat.protectedBlockIds` 均已删除）、未知实体跳过、可选依赖等方式降低对其他模组的副作用。
 
 5. **生存圈**
    - 灾变通常每个 Boss 一个固定 HomePos。
@@ -307,7 +307,7 @@ Boss 死亡 -> AfterDefeatBoss()
 
 - **设计决策：同一个 Boss 可以同时存在两套 Boss 重生笼，这是刻意设计，不是 Bug。**
 - 若本模组 JSON 中也配置了 Cataclysm 的 Boss，Cataclysm 自己仍会生成自己的重生笼，本模组也可能生成另一个笼。
-- 当前 `foreignCageBlockIds` 只用于“避免把本模组笼直接放在 Cataclysm 笼的位置”，不会阻止本模组在附近另找位置放第二个笼。
+- 当前 `avoid_blocks` 只用于“搜索第一趟避开本模组笼/灾变祭坛所在的位置”，不会阻止本模组在附近另找位置放第二个笼（也**不会**阻止 `force_place` / 兜底写入覆盖它——v4 起不存在任何保护底线）。
 - 是否让同一 Boss 同时拥有两套重生笼，由数据包作者决定：
   - 不配置 Cataclysm Boss 的 JSON → 只有灾变原版笼；
   - 配置 Cataclysm Boss 的 JSON → 两套笼共存。

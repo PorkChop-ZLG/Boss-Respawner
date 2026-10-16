@@ -15,8 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Guards the source-level half of the migration: the two removed global config options must be gone and
- * the new protection floor must actually be declared and used.
+ * Guards the source-level half of the migration: the removed global config options must be gone, the
+ * protection floor that v4 deleted must not creep back, and the two-pass avoid search must stay wired.
  *
  * <p>These assertions are cheap and catch a half-finished refactor that still compiles because a stale
  * constant happened to be left behind.
@@ -59,24 +59,35 @@ class SourceMigrationTest {
     }
 
     @Test
-    @DisplayName("the protected-block floor is declared and enforced")
-    void protectedBlockFloorIsWired() throws IOException {
+    @DisplayName("the removed protected-block floor stays removed, and the two-pass avoid search stays wired")
+    void protectionFloorIsGoneAndAvoidRetries() throws IOException {
         List<SourceFile> sources = mainSources();
 
-        SourceFile config = sources.stream()
-                .filter(s -> "Config.java".equals(s.name()))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Config.java not found"));
-        assertTrue(config.text().contains("PROTECTED_BLOCK_IDS"),
-                "Config.java must declare PROTECTED_BLOCK_IDS");
-        assertTrue(config.text().contains("cataclysm:boss_respawner"),
-                "the protected list must default to including the Cataclysm altar block");
+        // v4 deleted the field, the global config option and the refusal path: a protected-block floor
+        // layered on top of a hard avoid filter is what made Minoshroom / Alpha Yeti / Snow Queen cages fail
+        // to appear at all (avoid -> no candidate -> fallback -> refused). Re-adding any of it here must fail
+        // this test before it can ship.
+        for (SourceFile source : sources) {
+            assertFalse(source.text().contains("PROTECTED_BLOCK_IDS"),
+                    source.name() + " reintroduces the removed global protection list");
+            assertFalse(source.text().contains("protectedBlockIds"),
+                    source.name() + " reintroduces the removed protectedBlockIds config option");
+            assertFalse(source.text().contains("protectedBlocks"),
+                    source.name() + " reintroduces a protected-blocks field on the placement rule");
+            assertFalse(source.text().contains("Refusing to place the respawn cage"),
+                    source.name() + " reintroduces the protected-block refusal that abandoned placements");
+        }
 
-        boolean referencedOutsideConfig = sources.stream()
-                .filter(s -> !"Config.java".equals(s.name()))
-                .anyMatch(s -> s.text().contains("PROTECTED_BLOCK_IDS"));
-        assertTrue(referencedOutsideConfig,
-                "PROTECTED_BLOCK_IDS must be consulted by the placement code, not merely declared");
+        // The replacement is the two-pass search in PlacementResolver: pass one honours avoid_blocks, pass two
+        // repeats the identical sweep with the avoid filter dropped, so the filter can never lose a cage.
+        SourceFile resolver = sources.stream()
+                .filter(s -> "PlacementResolver.java".equals(s.name()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("PlacementResolver.java not found"));
+        assertTrue(resolver.text().contains("search(level, base, placement, true)"),
+                "the first search pass must honour avoid_blocks");
+        assertTrue(resolver.text().contains("search(level, base, placement, false)"),
+                "the second search pass must drop the avoid filter instead of giving up");
     }
 
     @Test

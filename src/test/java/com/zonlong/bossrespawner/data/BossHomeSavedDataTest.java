@@ -57,6 +57,7 @@ class BossHomeSavedDataTest {
                   "mode": "home",
                   "home": {
                     "offset": [1, -2, 3],
+                    "place_delay_ticks": 30,
                     "force_place": true,
                     "search_failure_fallback": false,
                     "search_down": 9,

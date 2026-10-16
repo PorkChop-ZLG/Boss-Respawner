@@ -1,5 +1,12 @@
 # Home 出生点模式设计 —— 评审与修改建议
 
+> **⚠️ 历史文档（后续更新）：** 本文是 2026-10-16 的一次设计评审，当时针对的是 **schema v2**。它提出的
+> **R3（新增规则级 `protected_blocks` + 全局 `PROTECTED_BLOCK_IDS` 保护底线）已在 schema v4 被推翻并删除**：
+> 「保护 + 搜索硬跳过」的叠加会造成 **搜索无候选 → 兜底 → 被保护拒绝 → 笼子完全不出现**（实测：暮色森林的
+> 米诺菇 / 雪怪首领 / 冰雪女王）。v4 改用「两趟搜索（第 1 趟避让、第 1 趟无果时第 2 趟忽略避让）+ 只有写入路径能
+> 覆盖方块」。**推翻理由与替代方案见 [`home-respawn-design.md` §5.5](home-respawn-design.md#55-avoid_blocks搜索第一趟强制避开以及为什么-v4-删除了-protected_blocks)，请勿照本文 R3 重新引入 `protected_blocks` / `protectedBlockIds`。**
+> 本文其余与 SavedData、事件时机、defer 队列相关的评审结论仍然有效。文中出现的 `schema_version: 2` 是当时的版本。
+
 **评审对象：** [`docs/home-respawn-design.md`](home-respawn-design.md)（2026-10-16）
 **配套交接文档：** [`docs/plans/2026-10-16-deepseek-home-respawn-handoff.md`](plans/2026-10-16-deepseek-home-respawn-handoff.md)
 **评审日期：** 2026-10-16
@@ -175,7 +182,7 @@ public boolean hasChunk(int chunkX, int chunkZ) {
 
 ---
 
-### R3 🟠 强制放置不再避让其他模组方块，会覆盖灾变祭坛
+### R3 🟠 强制放置不再避让其他模组方块，会覆盖灾变祭坛 —— **⛔ 本节建议已被 schema v4 推翻（见「建议修改」内的撤回说明）**
 
 #### 问题
 
@@ -203,26 +210,29 @@ public boolean hasChunk(int chunkX, int chunkZ) {
 
 #### 建议修改
 
+> **⛔ v4 撤回本节建议。** 下面这套「两个列表分工 + 全局不可绕过的底线」实现后在 v3 造成了笼子完全不出现的 ABANDON 失败模式，v4 已把 `protected_blocks` 与 `PROTECTED_BLOCK_IDS` 全部删除。**原因见 [`home-respawn-design.md` §5.5](home-respawn-design.md#55-avoid_blocks搜索第一趟强制避开以及为什么-v4-删除了-protected_blocks)；请勿按本节重新引入。** 下面保留原文以记录评审当时的推理。
+
 把**两个不同语义**拆开，不要合并成一个字段：
 
 | 概念 | 语义 | 是否可被 `force_place` 绕过 |
 |---|---|---|
 | `avoid_blocks` | 搜索时的**偏好**：避开这些方块去找更好的位置 | ✅ 可以绕过（保留设计现有定义） |
-| `protected_blocks` | **安全底线**：任何情况下都不得覆盖 | ❌ **不可绕过** |
+| ~~`protected_blocks`~~ | ~~**安全底线**：任何情况下都不得覆盖~~ | ~~❌ 不可绕过~~（**v4 已删除**） |
 
 具体：
 
-1. 在 §5 新增 `protected_blocks` 的定义：命中该列表时，无论 `force_place` 与 `search_failure_fallback` 取值如何，都**放弃放置并输出 `warn`**。
-2. 在 §5.4 明确写：`avoid_blocks` 与 `protected_blocks` 是**不同字段、不同语义**，不要用同一个键承担两种职责。
-3. **关于配置层级（重要）**：设计希望把放置策略全部下放到 JSON，这对 `avoid_blocks` 是合理的；但 `protected_blocks` 属于**跨规则的安全底线**，不应依赖每条第三方数据包各自记得声明。
+1. ~~在 §5 新增 `protected_blocks` 的定义：命中该列表时，无论 `force_place` 与 `search_failure_fallback` 取值如何，都**放弃放置并输出 `warn`**。~~（**v4 撤回**：这条"放弃放置"正是 ABANDON 失败模式的来源。）
+2. ~~在 §5.4 明确写：`avoid_blocks` 与 `protected_blocks` 是**不同字段、不同语义**，不要用同一个键承担两种职责。~~（**v4 撤回**：方块列表只保留 `avoid_blocks` 一个。）
+3. ~~**关于配置层级（重要）**：设计希望把放置策略全部下放到 JSON，这对 `avoid_blocks` 是合理的；但 `protected_blocks` 属于**跨规则的安全底线**，不应依赖每条第三方数据包各自记得声明。~~（**v4 撤回**：跨规则的 `Config.PROTECTED_BLOCK_IDS` 已随字段一起删除，避免同一坐标上"必须放下笼子"与"绝不能覆盖"互斥。）
 
-   建议：
+   ~~建议：~~
 
-   - **保留**一个全局 `Config.PROTECTED_BLOCK_IDS`（默认 `["cataclysm:boss_respawner"]`），语义是「本模组永不覆盖这些方块」；
-   - 同时允许每条规则用自己的 `protected_blocks` **追加**（不做减法）；
-   - §8「保留」列表相应加回这一项，交接文档 Task 6 同步。
+   - ~~**保留**一个全局 `Config.PROTECTED_BLOCK_IDS`（默认 `["cataclysm:boss_respawner"]`），语义是「本模组永不覆盖这些方块」；~~
+   - ~~同时允许每条规则用自己的 `protected_blocks` **追加**（不做减法）；~~
+   - ~~§8「保留」列表相应加回这一项，交接文档 Task 6 同步。~~
 
-   若项目所有者坚持全部下放 JSON，则必须在 §9 要求 18 条内置 JSON **全部显式声明**，并在 README 用醒目段落提示第三方数据包作者——否则「装了本模组后灾变祭坛被顶掉」会成为难以归因的 bug 报告。
+   ~~若项目所有者坚持全部下放 JSON，则必须在 §9 要求 18 条内置 JSON **全部显式声明**，并在 README 用醒目段落提示第三方数据包作者——否则「装了本模组后灾变祭坛被顶掉」会成为难以归因的 bug 报告。~~
+   → **v4 的实际做法**：`cataclysm:boss_respawner`（以及暮色森林的 17 种箱子）显式写进每条内置规则的 `avoid_blocks`；同时 README 用醒目段落提示"`force_place` / 兜底写入会覆盖任何方块、旧内容蒸发不掉落"。
 
 ---
 

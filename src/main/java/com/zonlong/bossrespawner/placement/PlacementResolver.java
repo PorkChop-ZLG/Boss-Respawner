@@ -21,9 +21,10 @@ import java.util.Set;
  * registered home in {@code home} mode. Search order is unchanged from earlier versions: downward,
  * then upward, then a horizontal ring.
  *
- * <p>Only {@code avoid_blocks} participates here (it is a search <em>preference</em>). The
- * {@code protected_blocks} floor is enforced on the write path instead, because a forced placement
- * bypasses this search entirely.
+ * <p>{@code avoid_blocks} is the only block list, and it is a search <em>preference</em>: the first pass
+ * honours it, and if that finds nothing the second pass repeats the search without it, so avoidance can
+ * never cost the player a cage. The write paths that skip this search entirely ({@code force_place} and the
+ * fallback) perform no block checks at all — they overwrite whatever is there.
  *
  * <p>Candidates in unloaded chunks are rejected without loading them: {@link ServerLevel#isLoaded} is a
  * non-loading query, and a loading one here would stall the server thread during a death event.

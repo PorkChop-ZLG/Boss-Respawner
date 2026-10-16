@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "enabled": true,
   "priority": 0,
   "entity": "minecraft:ravager",
@@ -20,8 +20,7 @@
       "horizontal_radius": 4,
       "require_ground": false,
       "avoid_fluids": false,
-      "avoid_blocks": [],
-      "protected_blocks": []
+      "avoid_blocks": []
     }
   },
   "death": {

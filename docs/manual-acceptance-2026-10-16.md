@@ -12,7 +12,7 @@
 ### 0.1 安装
 
 1. 构建产物：`build/libs/boss_respawner-0.1.0.jar` → 丢进整合包的 `mods/`。
-2. 建议同时装 **Cataclysm**（用于验证 `protectedBlockIds` 底线）。用 `gradlew runClient` 启动时会自动带上 `build.gradle` 里声明的可选依赖（灾变 / 传奇怪物 / Mowzie's）。
+2. 建议同时装 **Cataclysm**（用于 C6 共存回归，以及 P6 里"强制放置确实会覆盖灾变祭坛"这一条 —— v4 已删除保护底线，祭坛不再是例外）。用 `gradlew runClient` 启动时会自动带上 `build.gradle` 里声明的可选依赖（灾变 / 传奇怪物 / Mowzie's / 暮色森林 / 首领崛起）。
 
 ### 0.2 打开调试日志（**强烈建议，本清单大部分证据来自日志**）
 
@@ -53,13 +53,14 @@ saves/<存档名>/datapacks/acceptance-datapack/
 |---|---|---|
 | `01_home_ravager.json` | home 模式主流程（劫掠兽，钥匙=绿宝石，不消耗） | 正常加载 |
 | `02_death_zombie.json` | death 模式对照（僵尸，钥匙=腐肉） | 正常加载 |
-| `03_force_place_protected.json` | `force_place:true` + `protected_blocks:["minecraft:chest"]`（掠夺者） | 正常加载 |
-| `04_force_place_overwrite.json` | `force_place:true` + `avoid_blocks:["minecraft:chest"]`，无保护（卫道士） | 正常加载 |
-| `05_no_fallback.json` | `search_failure_fallback:false` + 搜索半径全 0（烈焰人） | 正常加载 |
+| `03_force_place_over_avoid.json` | `force_place:true` + `avoid_blocks:["minecraft:chest"]`（掠夺者）—— 强制放置跳过搜索，**无视避让列表** | 正常加载 |
+| `04_fallback_overwrites.json` | `force_place:false` + `search_failure_fallback:true` + 搜索半径全 0 + `avoid_blocks:["minecraft:chest"]`（卫道士）—— 两趟搜索必然失败，由**兜底写入**覆盖目标 | 正常加载 |
+| `05_no_fallback.json` | `search_failure_fallback:false` + 搜索半径全 0（烈焰人）—— 与 04 只差一个开关，结果是**不放置** | 正常加载 |
 | `06_duplicate_keep_existing.json` | `duplicate.mode: keep_existing`（女巫） | 正常加载 |
 | `07_rejected_v1_schema.json` | `schema_version: 1` | **被拒绝** |
 | `08_rejected_flat_placement.json` | v2 但扁平 `placement` | **被拒绝** |
 | `09_rejected_missing_mode.json` | 有 `placement.home` 但缺 `mode` | **被拒绝** |
+| `10_rejected_v3_schema.json` | `schema_version: 3` 且 `placement.home` 仍带已删除的 `protected_blocks`（其余部分完全是合法 v4） | **被拒绝**（版本门 + 迁移提示） |
 
 数据包里所有 key 物品都设了 `consume: false`，测试时不用反复刷物品。
 
@@ -107,24 +108,27 @@ saves/<存档名>/datapacks/acceptance-datapack/
 
 ---
 
-## 2. Schema v3 解析（负向路径）
+## 2. Schema v4 解析（负向路径）
 
-`/reload` 后查看日志。三条负向规则应当各自给出**不同**的警告，且都不影响其他规则。
+`/reload` 后查看日志。四条负向规则应当各有明确的警告，且都不影响其他规则。
 
 | # | 预期日志（关键片段） |
 |---|---|
-| R1 | `Respawn entry acceptance:07_rejected_v1_schema uses unsupported schema_version 1 (expected 3), skipping` |
-| R2 | `Respawn entry acceptance:08_rejected_flat_placement uses the schema v1 flat placement layout. Schema v1 is no longer supported; add "mode" and move the placement fields into "death" or "home".` |
-| R3 | `Respawn entry acceptance:09_rejected_missing_mode is missing the required placement.mode (expected "death" or "home"), skipping` |
+| R1 | `Respawn entry acceptance:07_rejected_v1_schema uses unsupported schema_version 1 (expected 4), skipping - schema v1 put the placement fields directly under "placement"; see README for the v1 -> v4 mapping` |
+| R2 | `Respawn entry acceptance:08_rejected_flat_placement uses unsupported schema_version 2 (expected 4), skipping - schema v2 put the spawn fields directly under "spawn"; ... see README for the v2 -> v4 mapping` |
+| R3 | `Respawn entry acceptance:09_rejected_missing_mode uses unsupported schema_version 2 (expected 4), skipping` |
+| R4 | `Respawn entry acceptance:10_rejected_v3_schema uses unsupported schema_version 3 (expected 4), skipping - schema v3 still had placement.<mode>.protected_blocks; v4 removed it, and avoid_blocks is now the only block list. See README for the v3 -> v4 mapping` |
 
-### R4 内置 18 条全部加载成功 【日志】
+> 08 与 09 的文件结构分别是"v1 扁平 placement"与"缺 mode"，但它们的 `schema_version` 是 2，因此在 v4 下**先被版本门拒绝**。那两条结构专属的警告由单元测试 `RespawnEntrySchemaTest` 用合法 v4 规则体钉住，实机不必构造。
+
+### R5 内置 32 条全部加载成功 【日志】
 
 | # | 预期 |
 |---|---|
-| R4-a | 日志出现 `Loaded 18 boss respawn entries (...)` —— 这里统计的是**全部**条目（含验收数据包），实际数字 = 18 + 验收包里成功加载的 6 条 = **24**。若少于 24，说明有内置条目被拒绝，需查日志定位。 |
-| R4-b | 日志中**不应**出现任何内置条目（`legendary_monsters:*` / `mowziesmobs:*`）的 skipping 警告 |
+| R5-a | 日志出现 `Loaded 32 boss respawn entries (...)` —— 这里统计的是**全部**条目（含验收数据包），实际数字 = 32 + 验收包里成功加载的 6 条 = **38**。若少于 38，说明有内置条目被拒绝，需查日志定位。 |
+| R5-b | 日志中**不应**出现任何内置条目（`legendary_monsters:*` / `mowziesmobs:*` / `twilightforest:*` / `block_factorys_bosses:*`）的 skipping 警告 |
 
-> 注：内置条目里引用的实体和物品需要对应模组在场。若未装传奇怪物/Mowzie's，这些条目会因「实体未注册」被跳过——这是预期行为，不是缺陷。**要完整验证 R4 请装齐可选依赖。**
+> 注：内置条目里引用的实体和物品需要对应模组在场。若未装传奇怪物/Mowzie's/暮色森林/首领崛起，这些条目会因「实体未注册」被跳过——这是预期行为，不是缺陷。**要完整验证 R5 请装齐可选依赖。**
 
 ---
 
@@ -201,54 +205,69 @@ saves/<存档名>/datapacks/acceptance-datapack/
 | P2-a | 日志 `Placement search started: base=<F>` |
 | P2-b | 重生笼出现在 F 附近 |
 
-### P3 强制放置 【实机】
+### P3 `force_place` 跳过搜索，直接落在目标格 【实机+日志】
 
-用 `04_force_place_overwrite.json`（卫道士）：
+用 `03_force_place_over_avoid.json`（掠夺者，`offset:[0,-1,0]`、`force_place:true`、`avoid_blocks:["minecraft:chest"]`）：
 
 1. 在地面放一个**箱子**。
-2. 站在箱子正上方召唤卫道士（`/summon minecraft:vindicator ~ ~ ~ {PersistenceRequired:1b,Tags:["acc"]}`，确保站在箱子上）。
+2. 站在箱子正上方召唤掠夺者（`/summon minecraft:pillager ~ ~ ~ {PersistenceRequired:1b,Tags:["acc"]}`，确保站在箱子上）。
 3. 击杀它。
 
 | # | 预期 |
 |---|---|
 | P3-a | 规则 `offset:[0,-1,0]` + `force_place:true` → 重生笼**正好出现在箱子那一格**，箱子被替换 |
-| P3-b | 日志 `Placement search` 不出现（`force_place:true` 跳过搜索），直接 `Placed ... respawn cage at <箱子坐标>` |
+| P3-b | 日志 `Placement search` 不出现（`force_place:true` 完全不执行搜索），直接 `Placed ... respawn cage at <箱子坐标>` |
 
-> 这同时验证了「`force_place` 会替换普通方块」这条已接受限制。
+### P4 `force_place` 无视 `avoid_blocks`，且旧方块内容蒸发 【实机+日志】
 
-### P4 `force_place` 绕过 `avoid_blocks` 【实机+日志】
+承接 P3：该规则的 `avoid_blocks` **包含** `minecraft:chest`，而 v4 里已经没有任何"保护"字段。
 
-承接 P3：该规则的 `avoid_blocks` **包含** `minecraft:chest`，但 `protected_blocks` 为空。
-
-| # | 预期 |
-|---|---|
-| P4-a | 箱子仍被替换 → 证明 `avoid_blocks` 被 `force_place` 绕过了 |
-
-### P5 保护方块阻止放置（不可绕过的底线）【实机+日志】
-
-用 `03_force_place_protected.json`（掠夺者，同样的 `offset:[0,-1,0]` + `force_place:true`，但 `protected_blocks:["minecraft:chest"]`）：
-
-1. 同样放箱子、站在箱子上召唤掠夺者、击杀。
+1. 击杀前先往那个箱子里放几件**可辨认的物品**（例如命名过的钻石），并记下箱子坐标。
+2. 按 P3 击杀掠夺者。
 
 | # | 预期 |
 |---|---|
-| P5-a | **箱子原样保留**，没有重生笼 |
-| P5-b | 日志 `Refusing to place the respawn cage for minecraft:pillager at <箱子坐标>: the block there (or below it) is in protected_blocks or the global protectedBlockIds list.` |
-| P5-c | 注意 P4 与 P5 的唯一区别就是 `protected_blocks` —— 这一对是判定「两个字段语义是否真的分离」的关键 |
+| P4-a | 箱子仍被替换 → 证明 `avoid_blocks` 对 `force_place` 完全无效（它压根不参与这条路径） |
+| P4-b | 打掉重生笼附近/用 `/data get block` 检查：原箱子内容**不在地上、不掉落、不转移**，直接消失 |
+| P4-c | 日志里**没有**任何 `Refusing to place` 之类的拒绝行（v4 已删除该分支） |
 
-### P6 全局保护底线：灾变祭坛（可选，需装 Cataclysm）【实机】
+### P5 兜底写入同样覆盖被避让的方块 【实机+日志】
 
-1. 找一个灾变的 `cataclysm:boss_respawner` 祭坛方块。
-2. 用**任意**规则的生物，把 `offset` 调到祭坛那一格（或直接站在祭坛上召唤 `04` 的卫道士，把祭坛当箱子用）。
+用 `04_fallback_overwrites.json`（卫道士，`offset:[0,-1,0]`、`force_place:false`、`search_failure_fallback:true`、搜索半径全 0）：
+
+1. 同样放一个箱子，站在箱子正上方召唤卫道士（`/summon minecraft:vindicator ~ ~ ~ {PersistenceRequired:1b,Tags:["acc"]}`）。
+2. 击杀它。
 
 | # | 预期 |
 |---|---|
-| P6-a | 祭坛**不被覆盖**，输出与 P5-b 同类的警告 —— 因为 `compat.protectedBlockIds` 默认含 `cataclysm:boss_respawner` |
-| P6-b | 把 `config` 里的 `protectedBlockIds` 清空后再试，祭坛会被覆盖（证明这条底线确实来自配置且默认生效）。**测完记得改回来。** |
+| P5-a | 规则 `offset:[0,-1,0]` → base 就是箱子那一格；候选位既不是空气也不可替换，**两趟搜索都找不到候选** |
+| P5-b | 因为 `search_failure_fallback:true`，重生笼**仍然出现在箱子那一格**，箱子被替换 |
+| P5-c | 日志按顺序出现：`Placement search started: ... avoid=[minecraft:chest]` → `No placement found near ... while avoiding [minecraft:chest]; retrying with the avoid filter relaxed` → `Relaxed search near ... found nothing either` → `No safe placement found; forcing respawn cage at <箱子坐标>` → `Placed ... respawn cage at <箱子坐标>` |
+
+> P5 与 P7 用的是同一种"搜索必然失败"的形状（半径全 0 + `require_ground:true`），唯一区别是 `search_failure_fallback` 的取值 —— 这一对是判定"兜底开关是否真的决定放不放"的关键。
+
+### P6 避让不会让笼子消失：两趟搜索的放宽行为 【实机+日志，需临时改规则】
+
+> 这一条是 v4 的核心保证，值得花 5 分钟做。**做完请把文件改回去。**
+
+1. 把 `03_force_place_over_avoid.json` 临时改成：
+   - `"force_place": false`
+   - `"offset": [0, 0, 0]`
+   - `"search_down": 0`、`"search_up": 0`、`"horizontal_radius": 0`
+   - `"require_ground": true`
+   - 保留 `"avoid_blocks": ["minecraft:chest"]`
+2. `/reload`，然后**站在箱子正上方**（base 就是你所站的那一格空气，下方是箱子）召唤掠夺者并击杀。
+
+| # | 预期 |
+|---|---|
+| P6-a | 第 1 趟搜索因为"下方是 `avoid_blocks` 里的箱子"而跳过唯一的候选；第 2 趟忽略避让，**接受该候选** |
+| P6-b | 重生笼出现在**箱子上面那一格**，箱子**原样保留**（内容也在）—— 这就是"避让只会换个位置，不会让笼子消失" |
+| P6-c | 日志出现 `retrying with the avoid filter relaxed` 与 `Relaxed search near <坐标> succeeded` |
+| P6-d | 不存在任何"拒绝放置"的日志行 |
 
 ### P7 `search_failure_fallback: false` 时不放置 【实机+日志】
 
-用 `05_no_fallback.json`（烈焰人，搜索半径全 0、`require_ground:true`）：
+用 `05_no_fallback.json`（烈焰人，搜索半径全 0、`require_ground:true`、`avoid_blocks` 为空）：
 
 1. 在空中召唤烈焰人（`/summon minecraft:blaze ~ ~5 ~ {PersistenceRequired:1b,Tags:["acc"]}`，脚下是空气）。
 2. 击杀它。
@@ -257,6 +276,7 @@ saves/<存档名>/datapacks/acceptance-datapack/
 |---|---|
 | P7-a | **没有**重生笼生成 |
 | P7-b | 日志 `No safe placement position for minecraft:blaze near <坐标> and search_failure_fallback is false; no respawn cage placed` |
+| P7-c | 这是服务端**唯一**一条会主动放弃放置的分支（另两条"停止"分别是"目标区块始终未加载"与 `keep_existing` 命中已有笼，都属设计如此） |
 
 ### P8 `keep_existing` 生效 【实机+日志】
 
@@ -281,6 +301,18 @@ saves/<存档名>/datapacks/acceptance-datapack/
 | P9-a | 该坐标最终只有 **1 个**重生笼方块实体（后放置者覆盖先放置者），日志两次都有 `Placed ... respawn cage at <同一坐标>` |
 
 > 这是设计文档 §5.6 与 §10 明确接受的限制，**不是缺陷**；此项用于确认文档描述与实现一致。
+
+### P10 灾变祭坛不再是例外（可选，需装 Cataclysm）【实机】
+
+> v3 里全局 `protectedBlockIds` 默认含 `cataclysm:boss_respawner`，祭坛是"不可覆盖"的；**v4 删除了这条底线**，祭坛会像箱子一样被覆盖。这一条用来确认删除是彻底的、没有残留的隐式保护。
+
+1. 找一个灾变的 `cataclysm:boss_respawner` 祭坛方块，站在它正上方。
+2. 用 `03_force_place_over_avoid.json`（掠夺者，`offset:[0,-1,0]`、`force_place:true`）召唤并击杀。
+
+| # | 预期 |
+|---|---|
+| P10-a | 祭坛**被重生笼替换**，日志里没有任何拒绝/保护相关的行 |
+| P10-b | 配置文件 `config/boss_respawner-common.toml` 里**没有** `[compat]` 组、没有 `protectedBlockIds`（见 C4） |
 
 ---
 
@@ -424,9 +456,10 @@ saves/<存档名>/datapacks/acceptance-datapack/
 | C1 | 旧存档兼容 | 用改动前的存档（有 `DIM-1`/`DIM1`、无 `boss_respawner_homes.dat`）进入，无报错，首次加载后生成该 `.dat` |
 | C2 | 手动放置的笼子 | `/give` 出来的笼子右键无反应（没有 BlockEntity 数据）——这是**已知的、设计内的**行为，不是本次改动引入 |
 | C3 | 高亮回归 | 关闭 `highlightBossRespawner` 后无描边，且日志中不出现相关异常 |
-| C4 | 配置文件生成 | 删除 `config/boss_respawner-common.toml` 后重启，新文件应包含 `general`/`compat.protectedBlockIds`/`debug` 三组，且**不含** `forcePlaceOnNoSafeSpot` 与 `foreignCageBlockIds` |
-| C5 | 配置界面本地化 | 游戏内配置界面能看到「受保护方块ID」/「Protected Block IDs」及其 tooltip，无 `missing translation` 字样 |
+| C4 | 配置文件生成 | 删除 `config/boss_respawner-common.toml` 后重启，新文件应只包含 `general` 与 `debug` 两组；**不得**出现 `[compat]` 组、`protectedBlockIds`、`forcePlaceOnNoSafeSpot`、`foreignCageBlockIds` |
+| C5 | 配置界面本地化 | 游戏内配置界面里 `general` / `debug` 的每个条目都有中文（或英文）标签与 tooltip，无 `missing translation` 字样；**不应**再出现「受保护方块ID」这类已删除配置项的条目 |
 | C6 | 与灾变共存 | 装在灾变整合包里，击杀灾变 Boss 后本模组不产生异常堆栈（灾变有自己的笼子机制，两者共存是设计内的） |
+| C7 | 旧数据包被拒 | 装一个 v3 时代的第三方数据包（含 `protected_blocks`），`/reload` 后日志对每个条目给出 `unsupported schema_version 3 (expected 4)` 并提示迁移，其余条目不受影响 |
 
 ---
 
@@ -437,18 +470,21 @@ saves/<存档名>/datapacks/acceptance-datapack/
 | 编号 | 项目 | 结果 | 备注 / 日志片段 |
 |---|---|---|---|
 | S1 | 冒烟 + 高亮 | ☐ 通过 ☐ 失败 | |
-| R1–R4 | Schema v3 解析与拒绝 | ☐ 通过 ☐ 失败 | |
+| R1–R4 | Schema v4 解析与拒绝（含 v3 结构） | ☐ 通过 ☐ 失败 | |
+| R5 | 内置 32 条 + 验收 6 条全部加载 | ☐ 通过 ☐ 失败 | |
 | H1 | 首次观察登记 | ☐ 通过 ☐ 失败 | |
 | H2 | 移动不覆盖 | ☐ 通过 ☐ 失败 | |
 | H3 | 旧存档首次加载登记 | ☐ 通过 ☐ 失败 | |
 | H4 | `/reload` 补登记 | ☐ 通过 ☐ 失败 | |
 | P1 | home 锚定出生点 | ☐ 通过 ☐ 失败 | |
 | P2 | death 锚定死亡点 | ☐ 通过 ☐ 失败 | |
-| P3–P4 | 强制放置 / 绕过 avoid_blocks | ☐ 通过 ☐ 失败 | |
-| P5–P6 | 保护方块底线 | ☐ 通过 ☐ 失败 | |
+| P3–P4 | `force_place` 跳搜索 / 无视避让 / 旧内容蒸发 | ☐ 通过 ☐ 失败 | |
+| P5 | 兜底写入覆盖被避让方块 | ☐ 通过 ☐ 失败 | |
+| P6 | 两趟搜索：避让不会让笼子消失 | ☐ 通过 ☐ 失败 | 需临时改 03 的规则，**测完改回** |
 | P7 | fallback=false 不放置 | ☐ 通过 ☐ 失败 | |
 | P8 | keep_existing | ☐ 通过 ☐ 失败 | |
 | P9 | allow_multiple 塌缩 | ☐ 通过 ☐ 失败 | |
+| P10 | 灾变祭坛不再是例外 | ☐ 通过 ☐ 未验证 | 需装 Cataclysm |
 | **D1** | **未加载不放置/不加载/不卡服** | ☐ 通过 ☐ 失败 | **优先级最高** |
 | **D2** | **重启后任务保留** | ☐ 通过 ☐ 失败 | **优先级最高** |
 | **D3** | **区块加载后完成放置** | ☐ 通过 ☐ 失败 | **优先级最高** |
@@ -458,7 +494,7 @@ saves/<存档名>/datapacks/acceptance-datapack/
 | B1–B2 | 重生继承 Home | ☐ 通过 ☐ 失败 | |
 | B3 | 记录删除时机 | ☐ 通过 ☐ 失败 | |
 | B4–B5 | count>1 / 快照不受 reload 影响 | ☐ 通过 ☐ 失败 | |
-| C1–C6 | 兼容与回归 | ☐ 通过 ☐ 失败 | |
+| C1–C7 | 兼容与回归（含配置文件已无 `[compat]`、旧数据包被拒） | ☐ 通过 ☐ 失败 | |
 
 ### 失败时请一并提供
 
@@ -466,4 +502,4 @@ saves/<存档名>/datapacks/acceptance-datapack/
 2. 触发失败的那条 JSON 规则全文。
 3. `config/boss_respawner-common.toml` 全文。
 4. 若与 defer 相关，额外提供 `saves/<存档名>/data/boss_respawner_homes.dat`（可用 NBTExplorer 打开）。
-5. 是否装了可选依赖（灾变 / 传奇怪物 / Mowzie's）及其版本。
+5. 是否装了可选依赖（灾变 / 传奇怪物 / Mowzie's / 暮色森林 / 首领崛起）及其版本。

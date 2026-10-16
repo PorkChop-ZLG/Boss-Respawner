@@ -10,8 +10,16 @@
 > - 移除 `spawn.set_home_to_cage`。
 > - `max_attempts` 默认 20，失败后恢复未点亮并重置、警告。
 >
-> **再后续更新：** JSON Schema 已从 v2 升到 **v3**（`spawn` 改为必填 `spawn.mode` + `spawn.summon` /
-> `spawn.transform`，`placement.<mode>` 新增 `place_delay_ticks`）。当前格式以 `README.md` 为准。
+> **再后续更新（两轮）：**
+> 1. JSON Schema 已从 v2 升到 **v3**（`spawn` 改为必填 `spawn.mode` + `spawn.summon` /
+>    `spawn.transform`，`placement.<mode>` 新增 `place_delay_ticks`）。
+> 2. 已升到 **v4（当前）**：`schema_version` 只接受 `4`；**删除了 `placement.<mode>.protected_blocks` 字段与全局
+>    `compat.protectedBlockIds` 配置项**，`avoid_blocks` 成为唯一的方块列表（语义为"搜索第一趟强制避开，第一趟无果时
+>    第二趟忽略它"）；`force_place: true` 与 `search_failure_fallback: true` 会**覆盖任何方块**，旧内容蒸发不掉落。
+>
+> 本文是 v1 历史设计稿，其中的 `HomePosLocator`、`visual.*`、`set_home_to_cage`、全局 `foreignCageBlockIds` 等
+> API 均已不存在或已被替换。**当前格式与行为一律以 `README.md`、`docs/home-respawn-design.md`（§5.5 记录了
+> `protected_blocks` 被删除的理由）和源码为准。**
 
 **版本：** v1.0（历史设计稿）
 **适用环境：** Minecraft 1.21.1 / NeoForge 21.1.219 / Java 21 / ModDevGradle
@@ -237,7 +245,7 @@ D:\Minecraft\Boss-Respawner
 | `placement.horizontal_radius` | int | 4 | 垂直找不到时水平螺旋搜索半径 |
 | `placement.require_ground` | bool | true | 要求下方有可站立方块 |
 | `placement.avoid_fluids` | bool | false | 是否避免放在流体中；默认不避流体 |
-| `placement.avoid_blocks` | string[] | `[]` | 若目标/候选被这些方块占用则跳过；默认模组会内置建议 `cataclysm:boss_respawner`（见 7.4） |
+| `placement.avoid_blocks` | string[] | `[]` | 若目标/候选被这些方块占用则跳过；默认模组会内置建议 `cataclysm:boss_respawner`（见 7.4）。（v4 补充：只影响搜索第一趟，第一趟无果时第二趟会忽略它；不存在 `protected_blocks`） |
 | `death.player_kill_only` | bool | false | 只有玩家（含间接击杀）导致死亡才生成 |
 | `death.dimensions` | string[] | `[]` | 空=全部；例如 `["minecraft:overworld"]` |
 | `death.biomes` | string[] | `[]` | 空=全部；可选过滤 |
@@ -510,7 +518,7 @@ findSafePos(serverLevel, origin, entry.placement):
         则接受
   3. 若失败，从 candidate.y 向上扫描 search_up
   4. 若仍失败，在 horizontal_radius 内做螺旋水平搜索
-  5. 最终检查 avoid_blocks：若目标方块或下方属于避免列表则跳过
+  5. 最终检查 avoid_blocks：若目标方块或下方属于避免列表则跳过（v4：仅第 1 趟；第 1 趟无果时第 2 趟忽略该列表）
   6. 返回 BlockPos
 ```
 

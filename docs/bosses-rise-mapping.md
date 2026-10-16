@@ -67,11 +67,11 @@
 | BOSS 战利品如何发放 | 战利品表为 `"type": "minecraft:entity"` —— **直接掉物品** |
 | 唯一的箱类来源 | `spawners/ancient_trial_key.json`（`"type": "minecraft:chest"`），它装的是**钥匙本身**，不是 BOSS 战利品 |
 
-> 对比：暮色森林的 `darktower_boss.json` 是**箱子**表且装着暮初恶魂的整套战利品，所以那边必须保护箱子。详见 [`twilight-forest-mapping.md`](twilight-forest-mapping.md) 第二节。
+> 对比：暮色森林的 `darktower_boss.json` 是**箱子**表且装着暮初恶魂的整套战利品，所以那边的规则把箱子写进了 `avoid_blocks`。详见 [`twilight-forest-mapping.md`](twilight-forest-mapping.md) 第二节。
 
 ### ⚠️ 仍有一个缺口：原版箱子
 
-它的结构（冥界竞技场地窖等）里仍有**原版箱子**。若要连这些也保护，需要把 `minecraft:chest` 与 `minecraft:trapped_chest` 加入全局 `compat.protectedBlockIds`。这一步尚未执行，等你确认。
+它的结构（冥界竞技场地窖等）里仍有**原版箱子**。若要连这些也避开，需要把 `minecraft:chest` 与 `minecraft:trapped_chest` 加进每条规则的 `placement.home.avoid_blocks`（v4 起**没有**全局 `compat.protectedBlockIds` 这种东西，它已随 `protected_blocks` 字段一并删除；而且任何"保护"语义都无法阻止 `force_place` / 兜底写入覆盖方块）。这一步尚未执行，等你确认。
 ## 三、⚠️ 关于 BOSS 数量：4 个还是 5 个？
 
 设计讨论中按 **4 个 BOSS** 处理，但 `2.1.2` 的实体与语言文件里实际有 **5 个**命名 BOSS，第 5 个是：
@@ -140,11 +140,11 @@ src/main/resources/data/block_factorys_bosses/boss_respawner/entries/
 └── kraken.json
 ```
 
-全部使用 `mode: "home"` + `activation.item = block_factorys_bosses:ancient_trial_key`，其余字段沿用现有内置条目的完整模板写法。骨架：
+全部使用 `mode: "home"` + `activation.item = block_factorys_bosses:ancient_trial_key`，其余字段沿用现有内置条目的完整模板写法。骨架（**v4 形态**，实际内置条目还含 `place_delay_ticks`）：
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 4,
   "enabled": true,
   "priority": 0,
   "entity": "block_factorys_bosses:underworld_knight",
@@ -161,14 +161,17 @@ src/main/resources/data/block_factorys_bosses/boss_respawner/entries/
       "require_ground": true,
       "avoid_fluids": false,
       "avoid_blocks": ["cataclysm:boss_respawner"],
-      "protected_blocks": []
+      "place_delay_ticks": 0
     }
   },
   "death": { "player_kill_only": false, "dimensions": [], "biomes": [] },
   "spawn": {
-    "delay_ticks": 20, "require_player_nearby": true, "player_range": 9.0, "allow_peaceful": false,
-    "count": 1, "spawn_offset": [0, 0, 0], "nbt": "", "finalize_spawn": true,
-    "max_attempts": 20, "retry_interval_ticks": 4
+    "mode": "summon",
+    "summon": {
+      "delay_ticks": 20, "require_player_nearby": true, "player_range": 9.0, "allow_peaceful": false,
+      "count": 1, "spawn_offset": [0, 0, 0], "nbt": "", "finalize_spawn": true,
+      "max_attempts": 20, "retry_interval_ticks": 4
+    }
   },
   "duplicate": { "mode": "allow_multiple", "search_radius": 16 }
 }

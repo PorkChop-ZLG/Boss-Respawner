@@ -27,7 +27,7 @@
 - 重生出来的 Boss 继承原始出生点，因此连续多轮重生不会发生位置漂移。
 - 目标区块未加载时不会强加载区块，而是留下**持久化待放置任务**，等区块自然加载后再完成放置。
 - 同一 Boss 可同时存在多套重生笼，也可以改为范围内只存在一个。
-- 有一层**不可绕过的保护方块底线**，任何模式下都不会覆盖灾变等模组的祭坛方块。
+- 有一份**搜索避让列表**（`avoid_blocks`）：搜索的第一趟会避开这些方块，但避让**永远不会导致放不出笼子**——第一趟一无所获时会忽略避让再搜一遍，最坏的结果只是笼子坐在被避让的方块上。
 - 重生笼可被原版发光描边高亮显示，玩家可透过方块看到；开关与距离在配置中调整。
 
 ## 获取方块
@@ -103,8 +103,8 @@
 | 冰雪女王 | `twilightforest:snow_queen` | 魔法地图核心 | `twilightforest:magic_map_focus` |
 | 谜题羊 | `twilightforest:quest_ram` | 魔法地图核心 | `twilightforest:magic_map_focus` |
 > 注：暮色森林为 8 个主线 Boss 各做了一个**专属奖杯**，但它们全是"打完才有"的掉落物，不满足复活钥匙要求，因此统一使用可合成的**魔法地图核心**。
-> 注：该模组的 Boss 战利品可能通过**箱子**发放（`darktower_boss.json` 就是一个装着暮初恶魂整套战利品的箱子表），且 Boss 场地遍布箱子，因此这 9 个条目把该模组全部 **17 种箱子**写进了 `protected_blocks`。
-> 注：`protected_blocks` **同时参与放置搜索的候选过滤**（不只是写入前的底线），所以搜索会绕开箱子去找别的位置，而不是"选中后放弃"导致笼子不出现。
+> 注：该模组的 Boss 战利品可能通过**箱子**发放（`darktower_boss.json` 就是一个装着暮初恶魂整套战利品的箱子表），且 Boss 场地遍布箱子，因此这 9 个条目把该模组全部 **17 种箱子**写进了 `avoid_blocks`（每条共 18 项，含 `cataclysm:boss_respawner`）。
+> 注：`avoid_blocks` 的语义是**搜索第一趟强制避开**：第一趟会绕开箱子去找别的位置；万一第一趟一无所获，第二趟会忽略避让再搜一遍，因此**避让不会导致笼子放不出来**，最坏的结果只是笼子坐在箱子上面（候选位必须是空气或可替换方块，所以箱子本身永远不会被搜索选中）。详见下方 [`avoid_blocks` 的完整语义](#avoid_blocks搜索第一趟强制避开)。
 > 注：谜题羊是一次性任务 NPC，被击杀后任务将永久无法完成（它死亡不掉落任何东西），因此同样纳入。其自带的 `EnforcedHomePoint` 本模组**不会读取**，只在首次观察时登记自己的 home。
 
 ### 钥匙选取原则
@@ -157,7 +157,7 @@ data/<namespace>/boss_respawner/entries/<任意文件名>.json
 
 - 监听目录会递归加载所有 `.json`。
 - 执行 `/reload` 后生效；已放置的重生笼使用放置当时的规则快照，不会被 `/reload` 改变。
-- **当前只支持 `schema_version: 3`**，`schema_version` 必须显式写出。
+- **当前只支持 `schema_version: 4`**，`schema_version` 必须显式写出。
 - 非法或未注册的条目会被跳过，不影响其他条目。
 
 ### 两种放置模式
@@ -198,7 +198,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 
 | 分类 | 字段 | 必填/选填 | 默认值 |
 |---|---|---|---|
-| 顶层 | `schema_version` | **必填** | 无（必须为 `3`） |
+| 顶层 | `schema_version` | **必填** | 无（必须为 `4`） |
 | 顶层 | `entity` | **必填** | 无 |
 | 顶层 | `activation.item` | **必填** | 无 |
 | 顶层 | `placement.mode` | **必填** | 无（`death` 或 `home`） |
@@ -224,7 +224,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 
 ```json
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "entity": "minecraft:warden",
   "activation": {
     "item": "minecraft:echo_shard"
@@ -247,7 +247,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 - 手持 1 个回响碎片右键激活并消耗；
 - 点亮后延迟 20 tick 尝试生成 1 只监守者；
 - 生成时需要附近有玩家；
-- 搜索失败时强制放置；
+- 搜索失败时在该坐标强制放置（**会覆盖该处的任何方块，旧方块及其内容直接消失、不掉落**，详见下方警示）；
 - 同一 Boss 允许同时存在多个重生笼。
 
 ---
@@ -256,7 +256,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 
 ```json
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "enabled": true,
   "priority": 0,
   "entity": "minecraft:warden",
@@ -277,8 +277,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
       "horizontal_radius": 4,
       "require_ground": true,
       "avoid_fluids": false,
-      "avoid_blocks": ["cataclysm:boss_respawner"],
-      "protected_blocks": []
+      "avoid_blocks": ["cataclysm:boss_respawner"]
     }
   },
   "death": {
@@ -323,8 +322,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
     "horizontal_radius": 4,
     "require_ground": true,
     "avoid_fluids": false,
-    "avoid_blocks": [],
-    "protected_blocks": []
+    "avoid_blocks": []
   }
 }
 ```
@@ -337,7 +335,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 
 | 字段 | 类型 | 必填/选填 | 默认值 | 说明 |
 |---|---|---|---|---|
-| `schema_version` | int | **必填** | 无 | 必须为 `3`。缺失、非数字或其他数值都会跳过该条目。 |
+| `schema_version` | int | **必填** | 无 | 必须为 `4`。缺失、非数字或其他数值都会跳过该条目。 |
 | `enabled` | bool | 选填 | `true` | 设为 `false` 时忽略整个条目。 |
 | `priority` | int | 选填 | `0` | 多个条目匹配同一个实体时使用，数字越大越优先；同优先级时按条目 ID 字典序取较小者。 |
 | `entity` | string 或 string[] | **必填** | 无 | 目标实体 ID，例如 `"minecraft:warden"`；也可写成数组共用同一套规则。数组中的实体必须全部已注册，否则整个条目被跳过。 |
@@ -366,40 +364,45 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 |---|---|---|---|
 | `offset` | int[3] | `[0, 0, 0]` | 相对模式基准点（死亡位置 / 出生点）的偏移，只应用一次 |
 | `place_delay_ticks` | int | `0` | Boss 死后等待多少 tick 再放置重生笼，最小 `0`。用于**等过 Boss 的死亡动画与它的战利品箱子** —— 有些模组的宝箱会在死亡动画结束后才出现，若重生笼先放下去会被顶掉或被迫失败（暮色森林的米诺菇就是这种情况）。暮色森林条目默认 `30`，幻影骑士 `100` |
-| `force_place` | bool | `false` | 是否跳过搜索，直接在 `基准点 + offset` 放置 |
-| `search_failure_fallback` | bool | `true` | 搜索失败后是否在该坐标强制放置 |
+| `force_place` | bool | `false` | 是否跳过搜索，直接在 `基准点 + offset` 放置。**会覆盖该处的任何方块**，见下方警示 |
+| `search_failure_fallback` | bool | `true` | 两趟搜索都失败后是否在该坐标强制放置。**同样会覆盖该处的任何方块**，见下方警示 |
 | `search_down` | int | `32` | 从基准点向下搜索的最大格数，最小 `0` |
 | `search_up` | int | `16` | 从基准点向上搜索的最大格数，最小 `0` |
 | `horizontal_radius` | int | `4` | 垂直搜索失败后水平搜索的半径，最小 `0` |
 | `require_ground` | bool | `true` | 搜索时是否要求下方有可站立的完整方块 |
 | `avoid_fluids` | bool | `false` | 搜索时是否避开流体 |
-| `avoid_blocks` | string[] | `[]` | **搜索时偏好避开**的方块 ID，可被 `force_place` 绕过 |
-| `protected_blocks` | string[] | `[]` | **任何情况下都不得覆盖**的方块 ID，`force_place` 也不能绕过 |
+| `avoid_blocks` | string[] | `[]` | **搜索第一趟强制避开**的方块 ID；第一趟无果时会忽略它再搜一遍，因此**避让永远不会导致放不出笼子** |
 
 放置语义：
 
-- `force_place: true`：目标区块已加载时直接放在该坐标，不执行搜索。
-- `force_place: false`：以该坐标为搜索中心，顺序为**向下 → 向上 → 水平**。
+- `force_place: true`：目标区块已加载时直接放在该坐标，**完全不执行搜索**，因此也不看 `avoid_blocks`。
+- `force_place: false`：以该坐标为搜索中心，顺序为**向下 → 向上 → 水平**，共两趟：
+  - **第 1 趟**：遵守 `avoid_blocks`，候选位是它本身或其下方的方块时跳过该候选；
+  - **第 2 趟**：第 1 趟一无所获时，**忽略 `avoid_blocks`** 用同样的顺序再搜一遍。候选位必须是空气或可替换方块，所以被避让的方块永远不会成为目标位——第 2 趟最坏的结果只是"笼子坐在箱子上面"。
 - 搜索成功：放在搜索到的位置。
-- 搜索失败且 `search_failure_fallback: true`：在该坐标强制放置。
-- 搜索失败且 `search_failure_fallback: false`：不放置并输出警告。
+- 两趟搜索都失败且 `search_failure_fallback: true`：在该坐标强制放置（覆盖该处方块）。
+- 两趟搜索都失败且 `search_failure_fallback: false`：**不放置**并输出警告。这是现在**唯一**一条会主动放弃放置的分支。
 - **`home` 模式搜索失败绝不回退到死亡位置。**
 - 无 Home 记录：不放置、不使用死亡点，并输出含实体 ID、UUID、死亡维度与坐标的警告。
 
-**强制放置的语义：** 它会忽略 `require_ground`、`avoid_fluids`、`avoid_blocks`，并且**允许替换目标位置上的普通方块**。它**不会**绕过 `protected_blocks`（见下）。由于重生笼方块在生存模式下不可破坏，误放的位置玩家无法自行清除，规则作者应据此谨慎设置 `offset`。
+> **⚠️ 明确警示（给整合包作者）：** `force_place: true` 与 `search_failure_fallback: true` 这两条路径**跳过搜索，并且会覆盖目标位置上的任何方块**——宝箱、基岩、别的模组的 BOSS 刷怪笼、灾变祭坛都照overwrite，**旧方块及其内容直接蒸发、不掉落**。这是刻意的设计：这两条路径的语义就是"无论如何都必须把笼子放出来"，不存在任何"保护方块"底线可以不覆盖它们。
+>
+> 由于重生笼方块在生存模式下不可破坏，误放的位置玩家无法自行清除，规则作者应据此谨慎设置 `offset`，并优先用 `avoid_blocks` + 正常的搜索路径让笼子自己找位置。
 
-#### `avoid_blocks` 与 `protected_blocks`
+#### `avoid_blocks`：搜索第一趟强制避开
 
-这两个字段语义不同，**不可混用**：
+`avoid_blocks` 是 v4 里**唯一的**方块列表，三段式语义必须分清：
 
-| 字段 | 作用 | `force_place` 是否绕过 |
-|---|---|---|
-| `avoid_blocks` | 普通搜索时优先避开的方块 | 是 |
-| `protected_blocks` | 任何情况下都不得覆盖的方块 | **否** |
+| 场景 | `avoid_blocks` 是否生效 |
+|---|---|
+| 普通搜索第 1 趟 | **生效**：候选位本身或其下方命中列表时跳过该候选 |
+| 普通搜索第 2 趟（第 1 趟一无所获时才发生） | **不生效**：为了不丢笼子，忽略整个列表再搜一遍 |
+| `force_place: true` | **完全不看**：这条路根本不执行搜索 |
+| `search_failure_fallback: true` 的兜底写入 | **完全不看**：这条路是"两趟都失败"之后的强制写入 |
 
-此外模组自带一条全局保护底线，默认包含 `cataclysm:boss_respawner`。最终保护集合是**全局列表与当前规则列表的并集**：规则只能追加保护方块，不能移除全局保护方块。保护检查覆盖目标位置及其下方位置。
+因此 **`avoid_blocks` 只能影响笼子放在哪里，永远不能阻止笼子被放出来**。想彻底避开某类方块，正确的做法是把它的 id 加进 `avoid_blocks`，而不是期待一个"不可覆盖"的底线——v3 的 `protected_blocks` 与全局 `compat.protectedBlockIds` 已在本版本**删除**（原因见 [`docs/home-respawn-design.md`](docs/home-respawn-design.md) §5.5）。
 
-> 本模组永远不会覆盖受保护方块；命中时会保持原方块不变并输出警告。这就是从旧版全局 `foreignCageBlockIds` 拆出来的“安全底线”职责，而原来的“可配置避让”职责现在由每条规则的 `avoid_blocks` 承担。
+> 保护与搜索硬跳过叠加会造成一个致命失败模式：**搜索无候选 → 兜底 → 被"保护"拒绝 → 笼子完全不出现**。实测出现在暮色森林的米诺菇 / 雪怪首领 / 冰雪女王，因此 v4 改用「两趟搜索 + 只有写入路径能覆盖」取代了那条硬底线。
 
 #### `death`：死亡触发条件
 
@@ -493,7 +496,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 ### 加载与校验规则
 
 - 文件路径格式：`data/<namespace>/boss_respawner/entries/<任意文件名>.json`
-- `schema_version` 必须显式存在且等于 `3`。
+- `schema_version` 必须显式存在且等于 `4`。
 - `placement.mode` 必须显式存在且为 `death` 或 `home`。
 - 选中的模式对象（`placement.death` 或 `placement.home`）必须存在。
 - `spawn.mode` 必须显式存在且为 `summon` 或 `transform`。
@@ -507,17 +510,31 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 
 ### 从旧版本迁移
 
-Schema v1 与 v2 都已**不再被解析**（有意的破坏性变更）。当前版本是 **schema v3**：`spawn` 变成「先选模式、再放子对象」，`placement.<mode>` 新增 `place_delay_ticks`。
+Schema v1、v2 与 v3 都已**不再被解析**（有意的破坏性变更）。当前版本是 **schema v4**：在 v3 的基础上**删除了 `protected_blocks` 字段与全局 `compat.protectedBlockIds` 配置项**，`avoid_blocks` 成为唯一的方块列表。三段迁移表如下，请**按顺序**读完再改文件。
 
-#### v2 → v3
+日志会针对不同旧版本给出各自的提示：v3 提示 `protected_blocks` 已被 v4 删除、`avoid_blocks` 现在是唯一的方块列表；v2 提示 `spawn` 要改成模式 + 子对象；v1 提示扁平 `placement` 要改成 `placement.<mode>`。收到任意一条都说明该文件必须迁移。
 
-| v2 | v3 |
+#### v3 → v4
+
+| v3 | v4 |
 |---|---|
-| `schema_version: 2` | `schema_version: 3` |
+| `schema_version: 3` | `schema_version: 4` |
+| `placement.<mode>.protected_blocks` | **字段被删除**。里面的方块 id **应整体并入同级的 `avoid_blocks`**（箱子、祭坛等都属于"希望避让"的方块） |
+| 全局 `compat.protectedBlockIds` | **配置项被删除**。它默认含的 `cataclysm:boss_respawner` 应写进每条规则的 `avoid_blocks` |
+| 搜索：`avoid_blocks` 与 `protected_blocks` 同时过滤候选，命中 `protected_blocks` 时**放弃放置** | 搜索：**两趟**。第 1 趟遵守 `avoid_blocks`；第 1 趟无果时第 2 趟忽略它再搜一遍，因此避让**永远不会**导致放不出笼子 |
+
+> **不要只改版本号。** v4 的解析器**不读取** `protected_blocks`，残留的键不会报错、也不会生效——那些方块会立刻失去避让。必须把里面的 id 搬进 `avoid_blocks`。
+
+#### v2 → v4
+
+| v2 | v4 |
+|---|---|
+| `schema_version: 2` | `schema_version: 4` |
 | `spawn.delay_ticks`、`spawn.count` 等字段**直接**放在 `spawn` 下 | 整体移进 `spawn.summon`，并补一行 `"mode": "summon"` |
-| *(无)* | `spawn.mode` —— 新增必填，取 `"summon"` 或 `"transform"` |
+| *(无)* | `spawn.mode` —— v3 新增必填，取 `"summon"` 或 `"transform"` |
 | *(无)* | `spawn.transform` —— 选中 `"transform"` 时的子对象，`transform_block` 必填 |
-| *(无)* | `placement.<mode>.place_delay_ticks` —— 新增，默认 `0` |
+| *(无)* | `placement.<mode>.place_delay_ticks` —— v3 新增，默认 `0` |
+| *(无)* | 没有 `protected_blocks` 可迁移：v2 从来没有这个字段 |
 
 扁平 `spawn`（字段直接放在 `spawn` 下、没有 `mode`）会被明确拒绝，日志里会指出"这是 v2 结构"。最省事的迁移方式：补上 `"mode": "summon"`，再把原来的字段整体挪进 `spawn.summon`：
 
@@ -539,31 +556,30 @@ Schema v1 与 v2 都已**不再被解析**（有意的破坏性变更）。当�
 }
 ```
 
-#### v1 → v3
+#### v1 → v4
 
 v1 的扁平 `placement` 同样会被明确拒绝（日志会指出"这是 v1 结构"）：
 
-| v1 | v3 |
+| v1 | v4 |
 |---|---|
-| `schema_version: 1` | `schema_version: 3` |
+| `schema_version: 1` | `schema_version: 4` |
 | `placement.offset` | `placement.<mode>.offset` |
 | `placement.search_down` | `placement.<mode>.search_down` |
 | `placement.search_up` | `placement.<mode>.search_up` |
 | `placement.horizontal_radius` | `placement.<mode>.horizontal_radius` |
 | `placement.require_ground` | `placement.<mode>.require_ground` |
 | `placement.avoid_fluids` | `placement.<mode>.avoid_fluids` |
-| `placement.avoid_blocks` | `placement.<mode>.avoid_blocks` |
+| `placement.avoid_blocks` | `placement.<mode>.avoid_blocks`（v4 里它是唯一的方块列表） |
 | `spawn.*`（扁平） | `spawn.summon.*`，并补上必填的 `spawn.mode` |
-| *(无)* | `placement.mode` —— 新增必填，取 `"death"` 或 `"home"` |
-| *(无)* | `placement.<mode>.force_place` —— 新增，默认 `false` |
-| *(无)* | `placement.<mode>.search_failure_fallback` —— 新增，默认 `true` |
-| *(无)* | `placement.<mode>.protected_blocks` —— 新增，默认 `[]` |
-| *(无)* | `placement.<mode>.place_delay_ticks` —— 新增，默认 `0` |
+| *(无)* | `placement.mode` —— v2 新增必填，取 `"death"` 或 `"home"` |
+| *(无)* | `placement.<mode>.force_place` —— v2 新增，默认 `false`（**会覆盖任何方块**） |
+| *(无)* | `placement.<mode>.search_failure_fallback` —— v2 新增，默认 `true`（**同上**） |
+| *(无)* | `placement.<mode>.place_delay_ticks` —— v3 新增，默认 `0` |
 | 全局 `forcePlaceOnNoSafeSpot` | `placement.<mode>.search_failure_fallback`（按规则单独设置） |
-| 全局 `foreignCageBlockIds` | `placement.<mode>.avoid_blocks`（避让）与新增的全局 `protectedBlockIds` / 规则级 `protected_blocks`（保护底线） |
+| 全局 `foreignCageBlockIds` | `placement.<mode>.avoid_blocks`（v4 起唯一的方块列表） |
 | 全局 `debug.logPlacement` | 现为 `debug.debugInfo` |
 
-最省事的迁移方式：把原来的扁平 `placement` 内容整体挪进 `placement.death`，然后补上 `"mode": "death"`，并显式写出三个新增字段：
+最省事的迁移方式：把原来的扁平 `placement` 内容整体挪进 `placement.death`，然后补上 `"mode": "death"`，并显式写出新增字段：
 
 ```json
 "placement": {
@@ -578,8 +594,7 @@ v1 的扁平 `placement` 同样会被明确拒绝（日志会指出"这是 v1 �
     "horizontal_radius": 4,
     "require_ground": true,
     "avoid_fluids": false,
-    "avoid_blocks": ["cataclysm:boss_respawner"],
-    "protected_blocks": []
+    "avoid_blocks": ["cataclysm:boss_respawner"]
   }
 }
 ```
@@ -597,17 +612,12 @@ highlightBossRespawner = true
 # 高亮显示距离，单位为格。默认 32。
 highlightBossRespawnerRange = 32
 
-[compat]
-# 本模组在任何情况下都不得覆盖这些方块，即使规则设了 force_place。
-# 规则里的 protected_blocks 只能追加，不能移除这里的条目。
-protectedBlockIds = ["cataclysm:boss_respawner"]
-
 [debug]
 # 调试信息：在日志中打印 Boss 重生笼的调试信息。默认 false。
 debugInfo = false
 ```
 
-放置与兼容策略现在全部由 JSON 规则控制；全局配置只保留总开关、客户端高亮与这条不可绕过的保护底线。
+放置与兼容策略现在**全部**由 JSON 规则控制：全局配置只保留总开关、客户端高亮与调试开关。schema v4 已删除原先的 `[compat] protectedBlockIds` 保护底线（以及更早的 `forcePlaceOnNoSafeSpot` / `foreignCageBlockIds`），需要避让的方块请写进每条规则的 `avoid_blocks`。
 
 ## 开发验证
 
@@ -621,8 +631,8 @@ gradlew.bat runClient
 
 `gradlew.bat test` 运行的是不启动游戏的纯逻辑单元测试，涵盖：
 
-- schema v3 的解析与各类拒绝路径（含 v1 扁平 `placement`、v2 扁平 `spawn`、缺失 `mode`、缺失模式对象、非法模式、版本门）；
+- schema v4 的解析与各类拒绝路径（含 v3 结构、v1 扁平 `placement`、v2 扁平 `spawn`、缺失 `mode`、缺失模式对象、非法模式、版本门），以及"残留的 `protected_blocks` 键不产生任何效果"；
 - `BossHomeSavedData` 的 NBT 往返、去重合并、区块索引、放置延迟与 `dataVersion` 拒绝策略；
-- 全部 32 个内置 JSON 的真实解析验证与字段默认值检查；
-- 验收数据包（`docs/examples/acceptance-datapack`）的正向/负向条目校验；
-- 对已删除全局配置项的源码引用检查。
+- 全部 32 个内置 JSON 的真实解析验证、字段默认值与迁移后的 `avoid_blocks` 列表（暮色森林 9 条各 18 项、其余各 1 项）；
+- 验收数据包（`docs/examples/acceptance-datapack`）的 6 条正向 / 4 条负向条目校验；
+- 对已删除全局配置项（含 `protectedBlockIds`）与已删除保护分支的源码引用检查，以及 `PlacementResolver` 两趟搜索的接线检查。

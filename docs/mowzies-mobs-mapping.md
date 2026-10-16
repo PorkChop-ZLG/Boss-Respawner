@@ -69,20 +69,28 @@ REG.register("bluff_rod", ...)
 data/mowziesmobs/boss_respawner/entries/<任意文件名>.json
 ```
 
-推荐示例骨架：
+推荐示例骨架（**schema v4**，实际内置条目还显式写出全部可选字段，可直接以 `src/main/resources/data/mowziesmobs/boss_respawner/entries/*.json` 为模板）：
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 4,
   "enabled": true,
   "entity": "mowziesmobs:ferrous_wroughtnaut",
   "activation": {
     "item": "mowziesmobs:captured_grottol"
   },
   "placement": {
-    "avoid_fluids": false
+    "mode": "home",
+    "home": {
+      "avoid_fluids": false,
+      "avoid_blocks": ["cataclysm:boss_respawner"]
+    }
+  },
+  "spawn": {
+    "mode": "summon",
+    "summon": {}
   }
 }
 ```
 
-> 正式 JSON 文件应在本映射文档确认后单独创建。
+> 本模组的 4 个 Mowzie's Boss 条目已随模组内置（见 `src/main/resources/data/mowziesmobs/boss_respawner/entries/`），本骨架仅用于说明结构。

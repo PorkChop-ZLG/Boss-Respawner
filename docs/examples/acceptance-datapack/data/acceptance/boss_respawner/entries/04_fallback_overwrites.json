@@ -1,10 +1,11 @@
 {
-  "schema_version": 3,
+  "_comment": "POSITIVE TEST (schema v4): search_failure_fallback writes at base and overwrites whatever is there. All search radii are 0 and require_ground is true, so a chest at home+offset is the only candidate; it is rejected in both passes because it is neither air nor replaceable, so the search genuinely fails and the fallback still lands on the chest. This is the counterpart of 05 (same search shape, fallback false, nothing placed).",
+  "schema_version": 4,
   "enabled": true,
   "priority": 0,
-  "entity": "minecraft:pillager",
+  "entity": "minecraft:vindicator",
   "activation": {
-    "item": "minecraft:gold_ingot",
+    "item": "minecraft:iron_ingot",
     "amount": 1,
     "consume": false
   },
@@ -13,15 +14,14 @@
     "home": {
       "offset": [0, -1, 0],
       "place_delay_ticks": 0,
-      "force_place": true,
+      "force_place": false,
       "search_failure_fallback": true,
-      "search_down": 32,
-      "search_up": 16,
-      "horizontal_radius": 4,
+      "search_down": 0,
+      "search_up": 0,
+      "horizontal_radius": 0,
       "require_ground": true,
       "avoid_fluids": false,
-      "avoid_blocks": ["minecraft:chest"],
-      "protected_blocks": ["minecraft:chest"]
+      "avoid_blocks": ["minecraft:chest"]
     }
   },
   "death": {

@@ -1,5 +1,5 @@
 {
-  "_comment": "NEGATIVE TEST: schema_version 1 must be rejected with 'unsupported schema_version 1'.",
+  "_comment": "NEGATIVE TEST: schema_version 1 (the v1 flat placement + flat spawn layout) must be rejected with 'unsupported schema_version 1 (expected 4)' plus the v1 -> v4 migration hint.",
   "schema_version": 1,
   "enabled": true,
   "priority": 0,

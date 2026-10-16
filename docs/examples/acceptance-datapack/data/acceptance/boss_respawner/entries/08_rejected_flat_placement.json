@@ -1,5 +1,5 @@
 {
-  "_comment": "NEGATIVE TEST: schema_version 2 but a schema v1 flat placement. Must be rejected with the dedicated 'schema v1 flat placement layout' warning.",
+  "_comment": "NEGATIVE TEST: the schema v1 flat placement layout, still declared as schema_version 2. Under v4 the version gate rejects it first (the dedicated 'schema v1 flat placement layout' warning is pinned in RespawnEntrySchemaTest against a valid v4 body).",
   "schema_version": 2,
   "enabled": true,
   "priority": 0,

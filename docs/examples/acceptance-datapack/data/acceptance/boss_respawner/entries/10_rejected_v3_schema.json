@@ -1,0 +1,52 @@
+{
+  "_comment": "NEGATIVE TEST: the schema v3 layout. Everything else is a valid v4 rule, but schema_version is 3 and placement.home still carries the protected_blocks field that v4 deleted. Must be rejected by the version gate, whose warning names protected_blocks and points at the v3 -> v4 mapping in README. This is the 'old version is recognised and told how to migrate' path.",
+  "schema_version": 3,
+  "enabled": true,
+  "priority": 0,
+  "entity": "minecraft:husk",
+  "activation": {
+    "item": "minecraft:sand",
+    "amount": 1,
+    "consume": false
+  },
+  "placement": {
+    "mode": "home",
+    "home": {
+      "offset": [0, 0, 0],
+      "place_delay_ticks": 0,
+      "force_place": false,
+      "search_failure_fallback": true,
+      "search_down": 32,
+      "search_up": 16,
+      "horizontal_radius": 4,
+      "require_ground": true,
+      "avoid_fluids": false,
+      "avoid_blocks": ["minecraft:chest"],
+      "protected_blocks": ["minecraft:chest"]
+    }
+  },
+  "death": {
+    "player_kill_only": false,
+    "dimensions": [],
+    "biomes": []
+  },
+  "spawn": {
+    "mode": "summon",
+    "summon": {
+      "delay_ticks": 20,
+      "require_player_nearby": true,
+      "player_range": 9.0,
+      "allow_peaceful": false,
+      "count": 1,
+      "spawn_offset": [0, 0, 0],
+      "nbt": "",
+      "finalize_spawn": true,
+      "max_attempts": 20,
+      "retry_interval_ticks": 4
+    }
+  },
+  "duplicate": {
+    "mode": "allow_multiple",
+    "search_radius": 16
+  }
+}

@@ -12,9 +12,6 @@
   "boss_respawner.configuration.debug": "Debug",
   "boss_respawner.configuration.debug.button": "Edit",
   "boss_respawner.configuration.debug.tooltip": "Debug logging settings.",
-  "boss_respawner.configuration.compat": "Compatibility",
-  "boss_respawner.configuration.compat.button": "Edit",
-  "boss_respawner.configuration.compat.tooltip": "Compatibility settings with other mods.",
 
   "boss_respawner.configuration.debug.debugInfo": "Debug Information",
   "boss_respawner.configuration.debug.debugInfo.tooltip": "Print Boss respawner debug information to the log.",
@@ -25,8 +22,6 @@
   "boss_respawner.configuration.general.highlightBossRespawner.tooltip": "Add a glowing outline to respawners so players can find them through blocks.",
   "boss_respawner.configuration.general.highlightBossRespawnerRange": "Highlight Distance",
   "boss_respawner.configuration.general.highlightBossRespawnerRange.tooltip": "Maximum distance in blocks at which respawners are highlighted. Default: 32.",
-  "boss_respawner.configuration.compat.protectedBlockIds": "Protected Block IDs",
-  "boss_respawner.configuration.compat.protectedBlockIds.tooltip": "Blocks this mod must never overwrite, in any mode, even with force_place. A rule's protected_blocks can add to this list but never remove entries from it.",
 
   "boss_respawner.jade.boss": "Revive: %s",
   "boss_respawner.jade.amount": "x%s",

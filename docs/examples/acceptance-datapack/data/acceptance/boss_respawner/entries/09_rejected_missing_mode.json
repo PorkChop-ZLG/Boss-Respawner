@@ -1,5 +1,5 @@
 {
-  "_comment": "NEGATIVE TEST: placement has no 'mode'. Must be rejected with 'missing the required placement.mode'.",
+  "_comment": "NEGATIVE TEST: placement.home exists but placement has no 'mode'. Under v4 the version gate rejects it first (the dedicated 'missing the required placement.mode' warning is pinned in RespawnEntrySchemaTest against a valid v4 body).",
   "schema_version": 2,
   "enabled": true,
   "priority": 0,
@@ -19,8 +19,7 @@
       "horizontal_radius": 4,
       "require_ground": true,
       "avoid_fluids": false,
-      "avoid_blocks": [],
-      "protected_blocks": []
+      "avoid_blocks": []
     }
   },
   "death": {
