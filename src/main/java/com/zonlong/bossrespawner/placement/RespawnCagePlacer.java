@@ -360,7 +360,7 @@ public final class RespawnCagePlacer {
             RespawnEntry.TransformRule transform = spawn.transform();
             be.setTransform(transform.block(), parseNbt(transform.nbt()),
                     transform.delayTicks(), transform.allowPeaceful(),
-                    transform.spawnerOffset(),
+                    transform.spawnerOffset(), transform.forcePlace(),
                     transform.at() == RespawnEntry.PlaceAt.ANCHOR);
         } else if (spawn.summon() != null) {
             RespawnEntry.SummonRule summon = spawn.summon();

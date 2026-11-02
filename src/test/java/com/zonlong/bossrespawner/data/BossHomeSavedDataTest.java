@@ -188,8 +188,38 @@ class BossHomeSavedDataTest {
         assertEquals(original.homeSnapshot(), restored.homeSnapshot());
         assertEquals(original.createdGameTime(), restored.createdGameTime());
         assertPlacementEquals(rules.placement(), restored.ruleSnapshot().placement());
-        assertPlacementEquals(rules.placement(), restored.ruleSnapshot().placement());
         assertEquals(snapshot, restored.homeSnapshot());
+    }
+
+    @Test
+    @DisplayName("pending home overrides survive save + load, replace duplicates, and expire")
+    void pendingHomeOverridesSurviveSaveAndLoad() {
+        BossHomeSavedData data = new BossHomeSavedData();
+        BlockPos spawner = new BlockPos(10, 64, 10);
+        BlockPos anchor = spawner.above();
+        PendingHomeOverride original = new PendingHomeOverride(
+                OVERWORLD, spawner, OVERWORLD, anchor, 1234L);
+
+        data.addPendingHomeOverride(original);
+        data.addPendingHomeOverride(new PendingHomeOverride(
+                OVERWORLD, spawner, NETHER, anchor, 5678L));
+        assertEquals(1, data.pendingHomeOverrideCount(), "the same spawner replaces the old instruction");
+
+        CompoundTag serialized = data.save(new CompoundTag(), RegistryAccess.EMPTY);
+        BossHomeSavedData reloaded = BossHomeSavedData.load(serialized, RegistryAccess.EMPTY);
+        assertEquals(1, reloaded.pendingHomeOverrideCount());
+
+        PendingHomeOverride taken = reloaded.takePendingHomeOverride(OVERWORLD, spawner, 5678L + 10);
+        assertNotNull(taken);
+        assertEquals(NETHER, taken.anchorDimension());
+        assertEquals(anchor, taken.anchorPos());
+        assertEquals(0, reloaded.pendingHomeOverrideCount(), "the override is one-shot");
+
+        BossHomeSavedData expired = new BossHomeSavedData();
+        expired.addPendingHomeOverride(original);
+        assertNull(expired.takePendingHomeOverride(OVERWORLD, spawner,
+                original.createdAt() + PendingHomeOverride.TTL_TICKS + 1));
+        assertEquals(0, expired.pendingHomeOverrideCount(), "expired overrides are discarded");
     }
 
     @Test
@@ -418,6 +448,7 @@ class BossHomeSavedDataTest {
             assertEquals(e.delayTicks(), a.delayTicks());
             assertEquals(e.allowPeaceful(), a.allowPeaceful());
             assertArrayEquals(e.spawnerOffset(), a.spawnerOffset(), "transform.spawnerOffset");
+            assertEquals(e.forcePlace(), a.forcePlace(), "transform.forcePlace");
             assertEquals(e.at(), a.at(), "transform.at");
         }
     }

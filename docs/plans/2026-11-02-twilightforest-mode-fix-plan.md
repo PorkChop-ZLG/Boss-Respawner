@@ -1,9 +1,9 @@
 # Twilight Forest 专属模式：测试问题诊断与修复计划
 
 **日期：** 2026-11-02
-**状态：** 第一版修复已实施（见文末“实施结果”）；Naga 的“不取箱也能激活”robust 方案、Minoshroom 替换蘑菇尚未实施
+**状态：** 第二版 force-place 修复已实施（2026-11-03）；Naga 的“不取箱也能激活”robust 方案仍未实施
 **前置设计：** [B 方案：固定锚点 + 死亡结算 + 笼子旁置](2026-11-02-twilightforest-placement-mode-design.md)
-**适用代码：** 提交 `e92a92c`（暮色森林专属模式）+ 第一版修复
+**适用代码：** 提交 `e92a92c`（暮色森林专属模式）+ 两轮修复
 
 ---
 
@@ -435,9 +435,9 @@ if (placement.requireGround() && !below.isFaceSturdy(level, pos.below(), Directi
 **未实施（保留为后续选项）**：
 
 - Naga 的 1B/2C：刷怪笼放到笼子位置 + `EntityJoinLevelEvent` 把新 Boss 的 home 重设为锚点，从而“不取箱也能激活”；
-- Minoshroom 的植物可替换（让笼子替换蘑菇落地，而不是悬空在蘑菇上方）；
-- Lich 的 2B/2C（home 重设）——当前用 2A 的 `spawner_offset` 解决；
 - 1C 移动箱子（不推荐）。
+
+> 第二轮修复（第 11 节）已用 force-place + home 重设取代了这里原本的“Minoshroom 植物可替换”和“Lich 2B/2C”待办。
 
 **验证**：
 
@@ -455,4 +455,50 @@ gradlew.bat build  → BUILD SUCCESSFUL
 - 暮色恶魂/米诺菇/被破坏场地：笼子是否能悬空生成；
 - 谜题羊：是否回到旧的 home + summon 行为；
 - 幻影骑士、和平难度、无 TF 环境回归。
+
+---
+
+## 11. 第二轮修复（2026-11-03）：force-place、统一偏移、巫妖/米诺菇替换奖励箱
+
+第一版实机测试后，用户要求：
+
+1. 所有暮色主线 Boss 的 `placement.offset` 统一为 `[0,-1,-1]`（与奖励箱同一水平面）；
+2. `placement.force_place` 统一为 `true`；
+3. 巫妖仍然上叠：改为允许 `spawn.transform` **强制放置**，让巫妖/米诺菇的刷怪笼直接占据奖励箱格、替换奖励箱。
+
+### 11.1 已实施
+
+| 项 | 内容 |
+|---|---|
+| 统一偏移 | 8 条主线 `placement.twilightforest.offset = [0,-1,-1]`（Naga/Lich 由用户手改，其余 6 条由脚本统一） |
+| 笼子 force | 8 条主线 `placement.twilightforest.force_place = true`；`RespawnCagePlacer` 直接使用 `base = HomePos + [0,-1,-1]`，不搜索；锚点/奖励箱格硬守卫仍生效 |
+| 巫妖/米诺菇 force | `spawn.transform.force_place = true`；`spawner_offset = [0,-1,0]`（落在 `HomePos.below()` 奖励箱格）；`canTransform` 允许替换**非空 ChestBlock**，`finishTransform` 删除箱子并放入刷怪笼（箱内物品按设计丢失） |
+| home 重设 | 新 `PendingHomeOverride` + `BossHomeSavedData.pendingHomeOverrides` + `TwilightHomeOverrideHandler`（`EntityJoinLevelEvent` + 反射调用 TF `EnforcedHomePoint#setRestrictionPoint`）把新 Boss 的 home 重设回 `HomePos`。巫妖的 LichSpawner 会下探/上移，米诺菇的 base spawner 会以箱子格为 home；没有这一步，下一轮会继续漂移 |
+| 旧笼迁移 | 无 `ForcePlace` 标签的旧巫妖/米诺菇笼在 `loadAdditional` 中迁移为 `force=true`、`spawner_offset=[0,-1,0]`；旧世界不必重新打 Boss 才能应用修复 |
+| 其余 6 条 | `spawner_offset=[0,0,0]`、`spawn.transform.force_place=false` |
+| Naga 提示 | 1A 的 `anchor_occupied` / `target_occupied` 提示保留；force 规则不会触发它 |
+
+### 11.2 字段/持久化
+
+- `spawn.transform.force_place`（bool，默认 false）：只允许替换目标格/锚点格上的 `ChestBlock`，其他方块仍拒绝；
+- `TransformRule` 增加 `forcePlace`；`RespawnRuleSnapshot`、`BossRespawnerBlockEntity` 的 `ForcePlace` NBT、`RespawnCagePlacer` 均已接通；
+- `PendingHomeOverride`（spawner 坐标 + anchor 坐标 + createdAt，TTL 1 小时）存入 `BossHomeSavedData` 的 `pendingHomeOverrides`；`EntityJoinLevelEvent` 读取并反射设置 home；
+- 旧数据没有 `pendingHomeOverrides` 时默认空列表；`BossHomeSavedData.DATA_VERSION` 仍为 1（加法字段）。
+
+### 11.3 验证
+
+```text
+gradlew.bat test   → 107 tests, 0 failures
+gradlew.bat build  → BUILD SUCCESSFUL
+```
+
+新增/更新测试：`spawner_offset` + `force_place` 解析/快照、8 条 `offset/placement.force_place`、巫妖/米诺菇的 `spawner_offset/force_place`、`pendingHomeOverrides` 的保存/加载/去重/过期、`BuiltinEntriesTest` 的 TF 默认值。
+
+### 11.4 仍需实机确认
+
+- 巫妖多轮：刷怪笼是否每次都在奖励箱格、盒子是否不再上叠、Boss 的 home 是否保持；
+- 米诺菇多轮：刷怪笼是否替换奖励箱、Boss 是否在箱子格生成、home 是否保持（不会向下漂移）；
+- 其他 6 条：笼子是否在 `HomePos + [0,-1,-1]`、刷怪笼是否仍在 `HomePos`；
+- 旧世界旧巫妖/米诺菇笼是否被迁移；
+- 奖励箱内容确实被替换（这是新设计的预期代价，不是 bug）。
 

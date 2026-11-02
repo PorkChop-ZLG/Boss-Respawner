@@ -60,7 +60,7 @@ class SchemaAdditionsTest {
     }
 
     @Test
-    @DisplayName("a transform rule parses into its own object with its six fields")
+    @DisplayName("a transform rule parses into its own object with its seven fields")
     void transformRuleParses() {
         RespawnEntry entry = parseOrFail("{}", """
                 {
@@ -83,6 +83,7 @@ class SchemaAdditionsTest {
         assertEquals("{Foo:1}", rule.nbt());
         assertArrayEquals(new int[]{0, 0, 0}, rule.spawnerOffset(),
                 "spawner_offset defaults to zero for old rules");
+        assertFalse(rule.forcePlace(), "force_place defaults to false for old rules");
         assertEquals(RespawnEntry.PlaceAt.CAGE, rule.at(), "at defaults to cage for old rules");
     }
 
@@ -95,12 +96,14 @@ class SchemaAdditionsTest {
                   "transform": {
                     "transform_block": "twilightforest:lich_boss_spawner",
                     "at": "anchor",
-                    "spawner_offset": [0, 1, 0]
+                    "spawner_offset": [0, 1, 0],
+                    "force_place": true
                   }
                 }
                 """);
 
         assertArrayEquals(new int[]{0, 1, 0}, entry.spawn().transform().spawnerOffset());
+        assertTrue(entry.spawn().transform().forcePlace());
     }
 
     @Test
@@ -137,7 +140,8 @@ class SchemaAdditionsTest {
                   "transform": {
                     "transform_block": "twilightforest:lich_boss_spawner",
                     "at": "anchor",
-                    "spawner_offset": [0, 1, 0]
+                    "spawner_offset": [0, 1, 0],
+                    "force_place": true
                   }
                 }
                 """);
@@ -146,6 +150,7 @@ class SchemaAdditionsTest {
 
         assertEquals(RespawnEntry.PlaceAt.ANCHOR, restored.spawn().transform().at());
         assertArrayEquals(new int[]{0, 1, 0}, restored.spawn().transform().spawnerOffset());
+        assertTrue(restored.spawn().transform().forcePlace());
     }
 
     @Test
@@ -291,10 +296,15 @@ class SchemaAdditionsTest {
                     boss + ": placement.mode");
             JsonObject modeObject = placement.getAsJsonObject("twilightforest");
             assertTrue(modeObject.has("offset"), boss + ": placement.twilightforest.offset");
+            assertEquals(0, modeObject.getAsJsonArray("offset").get(0).getAsInt(), boss + ": offset.x");
+            assertEquals(-1, modeObject.getAsJsonArray("offset").get(1).getAsInt(), boss + ": offset.y");
+            assertEquals(-1, modeObject.getAsJsonArray("offset").get(2).getAsInt(), boss + ": offset.z");
             assertEquals(0, modeObject.get("place_delay_ticks").getAsInt(),
                     boss + ": the removal wait replaces the old per-boss delay guess");
             assertFalse(modeObject.get("search_failure_fallback").getAsBoolean(),
                     boss + ": a failed search must not force the cage over the chest");
+            assertTrue(modeObject.get("force_place").getAsBoolean(),
+                    boss + ": the eight TF bosses use placement.force_place");
             assertFalse(modeObject.get("require_ground").getAsBoolean(),
                     boss + ": TF cages must be allowed to float (Ur-Ghast, broken arenas)");
 
@@ -306,9 +316,12 @@ class SchemaAdditionsTest {
                     boss + ": must use its native boss spawner");
             assertEquals("anchor", transform.get("at").getAsString(),
                     boss + ": the spawner belongs at the home anchor");
-            int expectedY = "lich".equals(boss) ? 1 : 0;
+            boolean forced = "lich".equals(boss) || "minoshroom".equals(boss);
+            int expectedY = forced ? -1 : 0;
             assertEquals(expectedY, transform.getAsJsonArray("spawner_offset").get(1).getAsInt(),
-                    boss + ": the Lich spawner needs the one-block-above offset; all others are zero");
+                    boss + ": only the Lich/Minoshroom put the spawner on the reward-chest cell");
+            assertEquals(forced, transform.get("force_place").getAsBoolean(),
+                    boss + ": only the Lich/Minoshroom replace the reward chest");
         }
 
         // The Quest Ram is a normal Animal (no BaseTFBoss, no loot chest): keep the pre-change behaviour.
@@ -317,6 +330,7 @@ class SchemaAdditionsTest {
         assertEquals("home", placement.get("mode").getAsString(), "quest_ram: placement.mode");
         JsonObject home = placement.getAsJsonObject("home");
         assertEquals(30, home.get("place_delay_ticks").getAsInt(), "quest_ram: old home delay");
+        assertFalse(home.get("force_place").getAsBoolean(), "quest_ram: old non-forcing home");
         assertTrue(home.get("search_failure_fallback").getAsBoolean(), "quest_ram: old fallback");
         assertTrue(home.get("require_ground").getAsBoolean(), "quest_ram: old ground rule");
         assertEquals("summon", quest.getAsJsonObject("spawn").get("mode").getAsString(),

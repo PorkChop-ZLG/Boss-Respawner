@@ -172,6 +172,7 @@ public record RespawnRuleSnapshot(
             t.putBoolean("AllowPeaceful", transform.allowPeaceful());
             t.putString("Nbt", transform.nbt());
             t.putIntArray("SpawnerOffset", transform.spawnerOffset());
+            t.putBoolean("ForcePlace", transform.forcePlace());
             t.putString("At", transform.at().name());
             tag.put("Transform", t);
         }
@@ -203,6 +204,7 @@ public record RespawnRuleSnapshot(
                     t.getBoolean("AllowPeaceful"),
                     t.getString("Nbt"),
                     spawnerOffsetFromTag(t),
+                    t.getBoolean("ForcePlace"),
                     at));
         }
 

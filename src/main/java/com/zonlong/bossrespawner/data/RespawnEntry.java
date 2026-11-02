@@ -504,6 +504,7 @@ public record RespawnEntry(
                         getBoolean(obj, "allow_peaceful", false),
                         getString(obj, "nbt", ""),
                         getIntArray(obj, "spawner_offset", new int[]{0, 0, 0}),
+                        getBoolean(obj, "force_place", false),
                         parsePlaceAt(entryId, obj))));
             }
 
@@ -588,11 +589,15 @@ public record RespawnEntry(
      *                      {@link PlaceAt#ANCHOR}. The default is zero, which keeps the old behaviour.
      *                      Twilight Forest's Lich spawner must be placed one block above the Lich's home,
      *                      because that spawner descends to the lowest air block and then moves up one.
+     * @param forcePlace    when true, a (non-empty) chest at the target/anchor is replaced instead of
+     *                      blocking the transform. Used by Twilight Forest's Lich and Minoshroom, whose
+     *                      spawners must occupy the reward-chest cell to keep their home stable. This
+     *                      destroys the chest and its contents by design; non-chest blocks still block.
      * @param at            where the target block is placed; {@link PlaceAt#CAGE} keeps the old in-place
      *                      behaviour, {@link PlaceAt#ANCHOR} moves it to the cage's stored home anchor
      */
     public record TransformRule(ResourceLocation block, int delayTicks, boolean allowPeaceful, String nbt,
-                                int[] spawnerOffset, PlaceAt at) {
+                                int[] spawnerOffset, boolean forcePlace, PlaceAt at) {
     }
 
     public record DuplicateRule(String mode, int searchRadius) {

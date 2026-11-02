@@ -180,7 +180,7 @@ class BuiltinEntriesTest {
                     // Only what a hand-off can use: one block, an animation delay, the Peaceful gate, NBT
                     // and where the block is placed (cage or home anchor).
                     ? List.of("transform_block", "delay_ticks", "allow_peaceful", "nbt",
-                    "spawner_offset", "at")
+                    "spawner_offset", "force_place", "at")
                     : List.of("delay_ticks", "require_player_nearby", "player_range", "allow_peaceful",
                     "count", "spawn_offset", "nbt", "finalize_spawn", "max_attempts", "retry_interval_ticks");
             for (String key : spawnKeys) {
@@ -198,13 +198,18 @@ class BuiltinEntriesTest {
         for (Loaded loaded : loadAll()) {
             JsonObject modeObject = placementModeObject(loaded);
             boolean twilightForest = loaded.entry().placement().mode() == RespawnEntry.PlacementMode.TWILIGHTFOREST;
-            assertFalse(modeObject.get("force_place").getAsBoolean(), loaded.name() + ": force_place");
+            // The eight TF bosses force the cage placement (the desired cell is allowed to replace a
+            // blocking block); the Quest Ram and all other mods keep the non-forcing default.
+            assertEquals(twilightForest, modeObject.get("force_place").getAsBoolean(),
+                    loaded.name() + ": force_place");
             if (twilightForest) {
-                // The Twilight Forest mode must never force a cage over whatever occupies the chosen cell;
-                // its offset already puts the cage beside the death chest, and a missing free cell is
-                // reported instead of overwriting the chest.
+                // The TF mode must never force the cage over the death chest via fallback: the anchor/chest
+                // guard and search_failure_fallback:false still win; the enabled force_place only allows
+                // the cage's own placement to replace a blocking block when the search actually chooses it.
                 assertFalse(modeObject.get("search_failure_fallback").getAsBoolean(),
                         loaded.name() + ": twilightforest search_failure_fallback");
+                assertFalse(modeObject.get("require_ground").getAsBoolean(),
+                        loaded.name() + ": twilightforest require_ground");
             } else {
                 assertTrue(modeObject.get("search_failure_fallback").getAsBoolean(),
                         loaded.name() + ": search_failure_fallback");
@@ -430,6 +435,8 @@ class BuiltinEntriesTest {
                                 transform.getAsJsonArray("spawner_offset").get(1).getAsInt(),
                                 transform.getAsJsonArray("spawner_offset").get(2).getAsInt()},
                         rule.transform().spawnerOffset(), name + ": transform.spawner_offset");
+                assertEquals(transform.get("force_place").getAsBoolean(), rule.transform().forcePlace(),
+                        name + ": transform.force_place");
                 assertTrue(rule.summon() == null, name + ": a transform rule must not carry a summon object");
             } else {
                 JsonObject summon = spawn.getAsJsonObject("summon");

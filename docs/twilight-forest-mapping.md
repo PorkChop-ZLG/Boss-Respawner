@@ -76,7 +76,7 @@
 
 暮色森林的 BOSS 战利品**可能通过箱子发放**，而且它的结构（巫妖塔、迷宫、暗黑高塔、巨魔洞穴等）本身就遍布箱子。重生笼如果落在箱子位置，就会**直接顶掉箱子及其全部战利品**——而 `force_place` / `search_failure_fallback` 路径确实可能覆盖实心方块。
 
-因此暮色森林的 9 个条目（8 个主线 Boss 的 `placement.twilightforest` + 谜题羊的 `placement.home`）把该模组的**所有 17 种箱子**写入 `avoid_blocks`（连同迁移过来的 `cataclysm:boss_respawner`，每条共 18 项）。8 条主线规则同时把 `search_failure_fallback` 设为 `false`，所以搜索失败时**宁可这一次不放，也不覆盖奖励箱**；谜题羊保留改版前的 `home` 配置（`search_failure_fallback: true`）。
+因此暮色森林的 9 个条目（8 个主线 Boss 的 `placement.twilightforest` + 谜题羊的 `placement.home`）把该模组的**所有 17 种箱子**写入 `avoid_blocks`（连同迁移过来的 `cataclysm:boss_respawner`，每条共 18 项）。8 条主线规则同时把 `placement.force_place` 设为 `true`：笼子直接放在 `HomePos + [0,-1,-1]`，不走搜索；`search_failure_fallback:false` 保留为语义说明。巫妖/米诺菇的 `spawn.transform.force_place:true` 会把刷怪笼放到奖励箱格并替换箱子。谜题羊保留改版前的 `home` 配置（`search_failure_fallback: true`）。
 
 > **⚠️ 本节在 schema v4 被改写。** v3 时代这些箱子写的是 `placement.home.protected_blocks`（一个"任何情况下都不得覆盖"的字段，并额外带一条全局 `compat.protectedBlockIds` 底线）。**v4 已把该字段与全局配置项一并删除**，因为"保护 + 搜索硬跳过"的叠加会造成 ABANDON：搜索把所有候选都当成受保护而跳过 → 无候选 → 兜底 → 写入前又被保护拒绝 → **笼子完全不出现**。实测就发生在米诺菇 / 雪怪首领 / 冰雪女王。完整推翻理由见 [Home 出生点模式设计 §5.5](home-respawn-design.md#55-avoid_blocks搜索第一趟强制避开以及为什么-v4-删除了-protected_blocks)。
 
@@ -232,7 +232,7 @@ src/main/resources/data/twilightforest/boss_respawner/entries/
 └── quest_ram.json
 ```
 
-全部使用 `activation.item = twilightforest:magic_map_focus`。8 个主线 Boss 使用 `placement.mode: "twilightforest"`，并把本模组的 **17 种箱子**与 `cataclysm:boss_respawner` 一起写入 `placement.twilightforest.avoid_blocks`（见第二节）；`require_ground` 为 `false`（允许悬空），`search_failure_fallback` 为 `false`（不覆盖箱子）。谜题羊不是 `BaseTFBoss`，使用 `placement.mode: "home"` + `spawn.mode: "summon"`，与改版前一致。骨架（**v4 形态**，实际内置条目还含全部可选字段）：
+全部使用 `activation.item = twilightforest:magic_map_focus`。8 个主线 Boss 使用 `placement.mode: "twilightforest"`，并把本模组的 **17 种箱子**与 `cataclysm:boss_respawner` 一起写入 `placement.twilightforest.avoid_blocks`（见第二节）；`offset` 统一为 `[0,-1,-1]`（与奖励箱同一水平面），`placement.force_place` 为 `true`，`require_ground` 为 `false`。谜题羊不是 `BaseTFBoss`，使用 `placement.mode: "home"` + `spawn.mode: "summon"`，与改版前一致。骨架（**v4 形态**，实际内置条目还含全部可选字段）：
 
 ```json
 {
@@ -244,8 +244,8 @@ src/main/resources/data/twilightforest/boss_respawner/entries/
   "placement": {
     "mode": "twilightforest",
     "twilightforest": {
-      "offset": [1, 0, 0],
-      "force_place": false,
+      "offset": [0, -1, -1],
+      "force_place": true,
       "search_failure_fallback": false,
       "search_down": 32,
       "search_up": 16,
@@ -284,6 +284,7 @@ src/main/resources/data/twilightforest/boss_respawner/entries/
       "allow_peaceful": false,
       "nbt": "",
       "spawner_offset": [0, 0, 0],
+      "force_place": false,
       "at": "anchor"
     }
   },
@@ -291,4 +292,4 @@ src/main/resources/data/twilightforest/boss_respawner/entries/
 }
 ```
 
-> 巫妖是把 `transform_block` 换成 `twilightforest:lich_boss_spawner`、`spawner_offset` 换成 `[0,1,0]`，其余相同。因为 `LichSpawnerBlockEntity` 会先下探再上移一格，刷怪笼必须放在巫妖 home 上方一格，才能让新 home 仍是原来的 home。
+> 巫妖和米诺菇是例外：`spawner_offset` 为 `[0,-1,0]`、`spawn.transform.force_place` 为 `true`，刷怪笼直接占据奖励箱格并**替换奖励箱（内容丢失）**；实体加入钩子会把新 Boss 的 `HomePos` 重设回原 home，避免巫妖的 LichSpawner 下探/上移或米诺菇的 base spawner 以箱子格为 home 造成下一轮漂移。其余 6 条主线保持 `spawner_offset:[0,0,0]`、`force_place:false`。

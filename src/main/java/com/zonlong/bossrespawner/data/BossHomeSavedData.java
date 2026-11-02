@@ -61,6 +61,7 @@ public class BossHomeSavedData extends SavedData {
     private static final String TAG_DATA_VERSION = "dataVersion";
     private static final String TAG_HOMES = "homes";
     private static final String TAG_PENDING = "pendingPlacements";
+    private static final String TAG_PENDING_HOME_OVERRIDES = "pendingHomeOverrides";
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -69,6 +70,7 @@ public class BossHomeSavedData extends SavedData {
 
     private final Map<UUID, HomeRecord> homes = new HashMap<>();
     private final Map<PendingPlacementTask.Key, PendingPlacementTask> pending = new HashMap<>();
+    private final List<PendingHomeOverride> pendingHomeOverrides = new ArrayList<>();
 
     /**
      * {@code (dimension, ChunkPos)} -> task keys.
@@ -118,6 +120,44 @@ public class BossHomeSavedData extends SavedData {
 
     public int pendingCount() {
         return pending.size();
+    }
+
+    public int pendingHomeOverrideCount() {
+        return pendingHomeOverrides.size();
+    }
+
+    // ------------------------------------------------------------------ pending home overrides
+
+    /**
+     * Records the one-shot home restoration for a force-place transform. Re-recording the same spawner
+     * position replaces the previous instruction (the latest transform wins).
+     */
+    public void addPendingHomeOverride(PendingHomeOverride override) {
+        pendingHomeOverrides.removeIf(existing ->
+                existing.spawnerDimension().equals(override.spawnerDimension())
+                        && existing.spawnerPos().equals(override.spawnerPos()));
+        pendingHomeOverrides.add(override);
+        setDirty();
+    }
+
+    /**
+     * Removes and returns the override for this spawner position, unless it is older than
+     * {@link PendingHomeOverride#TTL_TICKS}. Expired entries are removed as well.
+     */
+    public PendingHomeOverride takePendingHomeOverride(ResourceKey<Level> spawnerDimension, BlockPos spawnerPos,
+                                                       long now) {
+        java.util.Iterator<PendingHomeOverride> iterator = pendingHomeOverrides.iterator();
+        while (iterator.hasNext()) {
+            PendingHomeOverride override = iterator.next();
+            if (!override.spawnerDimension().equals(spawnerDimension)
+                    || !override.spawnerPos().equals(spawnerPos)) {
+                continue;
+            }
+            iterator.remove();
+            setDirty();
+            return now - override.createdAt() <= PendingHomeOverride.TTL_TICKS ? override : null;
+        }
+        return null;
     }
 
     // ------------------------------------------------------------------ homes
@@ -296,6 +336,12 @@ public class BossHomeSavedData extends SavedData {
         }
         tag.put(TAG_PENDING, pendingTag);
 
+        ListTag overridesTag = new ListTag();
+        for (PendingHomeOverride override : pendingHomeOverrides) {
+            overridesTag.add(override.toTag());
+        }
+        tag.put(TAG_PENDING_HOME_OVERRIDES, overridesTag);
+
         return tag;
     }
 
@@ -335,8 +381,18 @@ public class BossHomeSavedData extends SavedData {
             }
         }
 
-        LOGGER.info("Loaded {} home records and {} deferred placements from {}",
-                data.homes.size(), data.pending.size(), FILE_ID);
+        ListTag overridesTag = tag.getList(TAG_PENDING_HOME_OVERRIDES, Tag.TAG_COMPOUND);
+        for (int i = 0; i < overridesTag.size(); i++) {
+            CompoundTag overrideTag = overridesTag.getCompound(i);
+            try {
+                data.pendingHomeOverrides.add(PendingHomeOverride.fromTag(overrideTag));
+            } catch (Exception e) {
+                LOGGER.warn("Skipping corrupt pending home override #{} in {}: {}", i, FILE_ID, e.toString());
+            }
+        }
+
+        LOGGER.info("Loaded {} home records, {} deferred placements and {} home overrides from {}",
+                data.homes.size(), data.pending.size(), data.pendingHomeOverrides.size(), FILE_ID);
         return data;
     }
 

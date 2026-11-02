@@ -6,6 +6,7 @@ import com.zonlong.bossrespawner.UniversalBossRespawner;
 import com.zonlong.bossrespawner.block.BossRespawnerBlock;
 import com.zonlong.bossrespawner.data.BossHomeSavedData;
 import com.zonlong.bossrespawner.data.HomeRecord;
+import com.zonlong.bossrespawner.data.PendingHomeOverride;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -97,6 +98,16 @@ public class BossRespawnerBlockEntity extends BlockEntity {
      * directly on the Lich's home would move the home up by one block every respawn cycle.
      */
     private int[] spawnerOffset = new int[]{0, 0, 0};
+
+    /**
+     * When true, a chest at the target (or anchor) cell is replaced even if it still has loot. Only
+     * Twilight Forest's Lich and Minoshroom use this: their spawner must occupy the reward-chest cell,
+     * and the chest is intentionally destroyed to keep the boss's home from drifting.
+     */
+    private boolean transformForcePlace = false;
+
+    private static final String TF_LICH_SPAWNER = "twilightforest:lich_boss_spawner";
+    private static final String TF_MINOSHROOM_SPAWNER = "twilightforest:minoshroom_boss_spawner";
 
     /** Why the most recent {@link #activate(Level)} refused, so the block can give feedback. */
     public enum TransformFailure {
@@ -295,7 +306,7 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                         worldPosition, homePos);
                 return false;
             }
-            if (!isReplaceableOrEmptyChest(level, homePos)) {
+            if (!isReplaceableOrAllowedChest(level, homePos)) {
                 lastTransformFailure = TransformFailure.ANCHOR_OCCUPIED;
                 UniversalBossRespawner.LOGGER.warn(
                         "Respawner at {} cannot use the home anchor {} because that cell is occupied by "
@@ -317,7 +328,7 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                         worldPosition, target);
                 return false;
             }
-            if (!isReplaceableOrEmptyChest(level, target)) {
+            if (!isReplaceableOrAllowedChest(level, target)) {
                 lastTransformFailure = TransformFailure.TARGET_OCCUPIED;
                 UniversalBossRespawner.LOGGER.warn(
                         "Respawner at {} cannot place its target block at {} because that cell is occupied "
@@ -338,6 +349,16 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         return state.getBlock() instanceof ChestBlock
                 && level.getBlockEntity(pos) instanceof Container container
                 && container.isEmpty();
+    }
+
+    /**
+     * Like {@link #isReplaceableOrEmptyChest}, but a force-place transform may also replace a non-empty
+     * chest. Non-chest blocks still block; the deliberate chest destruction is limited to the Lich and
+     * Minoshroom spawner cells.
+     */
+    private boolean isReplaceableOrAllowedChest(Level level, BlockPos pos) {
+        return isReplaceableOrEmptyChest(level, pos)
+                || (transformForcePlace && level.getBlockState(pos).getBlock() instanceof ChestBlock);
     }
 
     /** The cell the transform target will occupy: the anchor plus {@link #spawnerOffset}. */
@@ -387,7 +408,7 @@ public class BossRespawnerBlockEntity extends BlockEntity {
             // descends through the home cell and stops only on a non-air block below it.
             if (transformAtAnchor && hasHomeAnchor()
                     && !homePos.equals(pos) && !homePos.equals(targetPos)) {
-                if (!level.isLoaded(homePos) || !isReplaceableOrEmptyChest(level, homePos)) {
+                if (!level.isLoaded(homePos) || !isReplaceableOrAllowedChest(level, homePos)) {
                     UniversalBossRespawner.LOGGER.warn(
                             "Respawner at {} could not transform: home anchor {} is not available; "
                                     + "resetting the cage", pos, homePos);
@@ -399,7 +420,7 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                     level.setBlock(homePos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
                 }
             }
-            if (!level.isLoaded(targetPos) || !isReplaceableOrEmptyChest(level, targetPos)) {
+            if (!level.isLoaded(targetPos) || !isReplaceableOrAllowedChest(level, targetPos)) {
                 UniversalBossRespawner.LOGGER.warn(
                         "Respawner at {} could not transform: target {} is not available; resetting the cage",
                         pos, targetPos);
@@ -431,6 +452,14 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                 BlockState state = level.getBlockState(targetPos);
                 level.sendBlockUpdated(targetPos, state, state, Block.UPDATE_ALL);
             }
+        }
+
+        // The Lich/Minoshroom spawners sit on the reward-chest cell, so the boss's HomePos would otherwise
+        // follow that cell. Remember the intended anchor; the entity-join hook restores it once the native
+        // spawner creates the boss.
+        if (transformForcePlace && hasHomeAnchor() && homeDimension != null) {
+            BossHomeSavedData.get(level).addPendingHomeOverride(new PendingHomeOverride(
+                    level.dimension(), targetPos, homeDimension, homePos, level.getGameTime()));
         }
         return true;
     }
@@ -472,12 +501,13 @@ public class BossRespawnerBlockEntity extends BlockEntity {
      *                 is removed; when false the cage is replaced in place
      */
     public void setTransform(ResourceLocation block, CompoundTag nbt, int delayTicks, boolean allowPeaceful,
-                             int[] spawnerOffset, boolean atAnchor) {
+                             int[] spawnerOffset, boolean forcePlace, boolean atAnchor) {
         this.transformBlockId = block == null ? "" : block.toString();
         this.transformNbt = nbt == null ? new CompoundTag() : nbt.copy();
         this.delayTicks = Math.max(0, delayTicks);
         this.allowPeaceful = allowPeaceful;
         this.spawnerOffset = normalizeOffset(spawnerOffset);
+        this.transformForcePlace = forcePlace;
         this.transformAtAnchor = atAnchor;
         setChanged();
     }
@@ -488,6 +518,10 @@ public class BossRespawnerBlockEntity extends BlockEntity {
 
     public int[] getSpawnerOffset() {
         return spawnerOffset.clone();
+    }
+
+    public boolean isTransformForcePlace() {
+        return transformForcePlace;
     }
 
     public String getTransformBlockId() {
@@ -799,6 +833,16 @@ public class BossRespawnerBlockEntity extends BlockEntity {
             this.spawnerOffset = rule.contains("SpawnerOffset", net.minecraft.nbt.Tag.TAG_INT_ARRAY)
                     ? normalizeOffset(rule.getIntArray("SpawnerOffset"))
                     : new int[]{0, 0, 0};
+            this.transformForcePlace = rule.getBoolean("ForcePlace");
+            // Cages placed before ForcePlace existed cannot be re-created (the block is unbreakable);
+            // migrate the two Twilight Forest bosses whose spawner must replace the reward chest.
+            if ((TF_LICH_SPAWNER.equals(this.transformBlockId)
+                    || TF_MINOSHROOM_SPAWNER.equals(this.transformBlockId))
+                    && !rule.contains("ForcePlace", Tag.TAG_BYTE)) {
+                this.transformForcePlace = true;
+                this.spawnerOffset = new int[]{0, -1, 0};
+                setChanged();
+            }
         }
 
         this.litTicks = tag.getInt(TAG_LIT_TICKS);
@@ -858,6 +902,7 @@ public class BossRespawnerBlockEntity extends BlockEntity {
             rule.putString("TransformBlock", transformBlockId);
             rule.putBoolean("AtAnchor", transformAtAnchor);
             rule.putIntArray("SpawnerOffset", spawnerOffset);
+            rule.putBoolean("ForcePlace", transformForcePlace);
             if (!transformNbt.isEmpty()) {
                 rule.put("TransformNbt", transformNbt.copy());
             }
