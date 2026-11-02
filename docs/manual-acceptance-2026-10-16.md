@@ -6,11 +6,11 @@
 **覆盖来源：** 执行文档「三、测试与验收标准 → 行为验收」全部 21 条，加上实现特有的若干条
 
 > **2026-11-02 更新：** 暮色森林的 8 个主线 Boss 使用 `placement.mode: "twilightforest"`：不直接放笼，
-> 而是等 Boss 被移除、奖励箱生成后，把笼子强制放在 `HomePos + [0,-1,-1]`（`placement.force_place: true`，
-> `require_ground: false`，与奖励箱同一水平面）。6 条主线的 `spawn.transform` 使用 `at: "anchor"`，
-> 由暮色森林自己的刷怪笼复活；**巫妖和米诺菇**的 `spawner_offset` 为 `[0,-1,0]`、
-> `spawn.transform.force_place: true`，刷怪笼直接替换奖励箱格，生成后由实体加入钩子把 home 重设回原
-> `HomePos`（奖励箱内容会丢失）。谜题羊是普通生物，保留 `home` + `summon`。本清单中涉及
+> 而是等 Boss 被移除、奖励箱生成后，把笼子强制放在 `HomePos + [0,-1,1]`（`placement.force_place: true`，
+> `require_ground: false`，与奖励箱同一水平面）。8 条主线的 `spawn.transform` 使用 `at: "anchor"`、
+> `spawn.transform.force_place: true`；**巫妖** `spawner_offset:[0,-1,0]` 替换奖励箱格，**其余 7 条** `[0,0,0]`
+> 在 `HomePos`（奖励箱保留）。没有再实现 home 重设：8 条 home 都稳定，不会上下漂移。
+> 谜题羊是普通生物，保留 `home` + `summon`。本清单中涉及
 > `place_delay_ticks`、`home` 模式或“笼子压在箱子上”的旧描述只适用于当时的版本；新行为以
 > [README 的 `twilightforest` 模式章节](../README.md) 和
 > [2026-11-02 问题诊断与修复计划](plans/2026-11-02-twilightforest-mode-fix-plan.md) 为准。
@@ -513,3 +513,4 @@ saves/<存档名>/datapacks/acceptance-datapack/
 3. `config/boss_respawner-common.toml` 全文。
 4. 若与 defer 相关，额外提供 `saves/<存档名>/data/boss_respawner_homes.dat`（可用 NBTExplorer 打开）。
 5. 是否装了可选依赖（灾变 / 传奇怪物 / Mowzie's / 暮色森林 / 首领崛起）及其版本。
+

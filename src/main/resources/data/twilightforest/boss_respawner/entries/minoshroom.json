@@ -14,7 +14,7 @@
       "offset": [
         0,
         -1,
-        -1
+        1
       ],
       "force_place": true,
       "search_failure_fallback": false,
@@ -61,7 +61,7 @@
       "at": "anchor",
       "spawner_offset": [
         0,
-        -1,
+        0,
         0
       ],
       "force_place": true

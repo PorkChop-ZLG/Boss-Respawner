@@ -6,7 +6,6 @@ import com.zonlong.bossrespawner.UniversalBossRespawner;
 import com.zonlong.bossrespawner.block.BossRespawnerBlock;
 import com.zonlong.bossrespawner.data.BossHomeSavedData;
 import com.zonlong.bossrespawner.data.HomeRecord;
-import com.zonlong.bossrespawner.data.PendingHomeOverride;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -105,9 +104,6 @@ public class BossRespawnerBlockEntity extends BlockEntity {
      * and the chest is intentionally destroyed to keep the boss's home from drifting.
      */
     private boolean transformForcePlace = false;
-
-    private static final String TF_LICH_SPAWNER = "twilightforest:lich_boss_spawner";
-    private static final String TF_MINOSHROOM_SPAWNER = "twilightforest:minoshroom_boss_spawner";
 
     /** Why the most recent {@link #activate(Level)} refused, so the block can give feedback. */
     public enum TransformFailure {
@@ -454,13 +450,6 @@ public class BossRespawnerBlockEntity extends BlockEntity {
             }
         }
 
-        // The Lich/Minoshroom spawners sit on the reward-chest cell, so the boss's HomePos would otherwise
-        // follow that cell. Remember the intended anchor; the entity-join hook restores it once the native
-        // spawner creates the boss.
-        if (transformForcePlace && hasHomeAnchor() && homeDimension != null) {
-            BossHomeSavedData.get(level).addPendingHomeOverride(new PendingHomeOverride(
-                    level.dimension(), targetPos, homeDimension, homePos, level.getGameTime()));
-        }
         return true;
     }
 
@@ -834,15 +823,6 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                     ? normalizeOffset(rule.getIntArray("SpawnerOffset"))
                     : new int[]{0, 0, 0};
             this.transformForcePlace = rule.getBoolean("ForcePlace");
-            // Cages placed before ForcePlace existed cannot be re-created (the block is unbreakable);
-            // migrate the two Twilight Forest bosses whose spawner must replace the reward chest.
-            if ((TF_LICH_SPAWNER.equals(this.transformBlockId)
-                    || TF_MINOSHROOM_SPAWNER.equals(this.transformBlockId))
-                    && !rule.contains("ForcePlace", Tag.TAG_BYTE)) {
-                this.transformForcePlace = true;
-                this.spawnerOffset = new int[]{0, -1, 0};
-                setChanged();
-            }
         }
 
         this.litTicks = tag.getInt(TAG_LIT_TICKS);

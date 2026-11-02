@@ -298,7 +298,7 @@ class SchemaAdditionsTest {
             assertTrue(modeObject.has("offset"), boss + ": placement.twilightforest.offset");
             assertEquals(0, modeObject.getAsJsonArray("offset").get(0).getAsInt(), boss + ": offset.x");
             assertEquals(-1, modeObject.getAsJsonArray("offset").get(1).getAsInt(), boss + ": offset.y");
-            assertEquals(-1, modeObject.getAsJsonArray("offset").get(2).getAsInt(), boss + ": offset.z");
+            assertEquals(1, modeObject.getAsJsonArray("offset").get(2).getAsInt(), boss + ": offset.z");
             assertEquals(0, modeObject.get("place_delay_ticks").getAsInt(),
                     boss + ": the removal wait replaces the old per-boss delay guess");
             assertFalse(modeObject.get("search_failure_fallback").getAsBoolean(),
@@ -316,12 +316,11 @@ class SchemaAdditionsTest {
                     boss + ": must use its native boss spawner");
             assertEquals("anchor", transform.get("at").getAsString(),
                     boss + ": the spawner belongs at the home anchor");
-            boolean forced = "lich".equals(boss) || "minoshroom".equals(boss);
-            int expectedY = forced ? -1 : 0;
+            int expectedY = "lich".equals(boss) ? -1 : 0;
             assertEquals(expectedY, transform.getAsJsonArray("spawner_offset").get(1).getAsInt(),
-                    boss + ": only the Lich/Minoshroom put the spawner on the reward-chest cell");
-            assertEquals(forced, transform.get("force_place").getAsBoolean(),
-                    boss + ": only the Lich/Minoshroom replace the reward chest");
+                    boss + ": only the Lich puts the spawner on the reward-chest cell; others stay on HomePos");
+            assertTrue(transform.get("force_place").getAsBoolean(),
+                    boss + ": all eight TF spawners keep force_place:true");
         }
 
         // The Quest Ram is a normal Animal (no BaseTFBoss, no loot chest): keep the pre-change behaviour.

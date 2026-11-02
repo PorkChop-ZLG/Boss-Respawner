@@ -1,9 +1,11 @@
 # Twilight Forest 专属模式：测试问题诊断与修复计划
 
 **日期：** 2026-11-02
-**状态：** 第二版 force-place 修复已实施（2026-11-03）；Naga 的“不取箱也能激活”robust 方案仍未实施
+**状态：** 第五版（2026-11-03）：笼子偏移 `[0,-1,1]`；巫妖刷怪笼在奖励箱格，其余 7 条回 `HomePos`
 **前置设计：** [B 方案：固定锚点 + 死亡结算 + 笼子旁置](2026-11-02-twilightforest-placement-mode-design.md)
-**适用代码：** 提交 `e92a92c`（暮色森林专属模式）+ 两轮修复
+**适用代码：** 提交 `e92a92c`（暮色森林专属模式）+ 五轮修复
+
+> **最新行为以第 14 节为准。** 第 10/11/12/13 节保留为历史迭代记录：其中“巫妖/米诺菇专用 force + home 重设 + 旧笼迁移”“`[0,-1,-1]` 北侧偏移”“8 条全部 `spawner_offset:[0,-1,0]`”均已被后续轮次取代。
 
 ---
 
@@ -501,4 +503,96 @@ gradlew.bat build  → BUILD SUCCESSFUL
 - 其他 6 条：笼子是否在 `HomePos + [0,-1,-1]`、刷怪笼是否仍在 `HomePos`；
 - 旧世界旧巫妖/米诺菇笼是否被迁移；
 - 奖励箱内容确实被替换（这是新设计的预期代价，不是 bug）。
+
+---
+
+## 12. 第三轮（2026-11-03）：全部 8 条强制替换奖励箱，移除 home 重设与旧笼迁移
+
+用户确认：
+
+1. 不需要 home 防漂移——强制在箱子位置放刷怪笼已经解决巫妖的问题；
+2. 模组尚未发布，仅本地测试，不需要旧笼迁移；
+3. 所有暮色 Boss 都允许在奖励箱位置强制放刷怪笼，顺便清理战斗场地。
+
+### 12.1 已实施
+
+- **移除** `PendingHomeOverride`、`BossHomeSavedData.pendingHomeOverrides`、`TwilightHomeOverrideHandler`、`TwilightHomeCompat`、`EntityJoinLevelEvent` 注册，以及 `BossRespawnerBlockEntity` 的 pending 写入；
+- **移除** `loadAdditional` 里的旧巫妖/米诺菇笼迁移；
+- 8 条主线（娜迦、巫妖、米诺菇、九头蛇、幻影骑士、暮初恶魂、雪怪首领、冰雪女王）全部：
+  - `spawn.transform.spawner_offset = [0,-1,0]`（刷怪笼在奖励箱格）；
+  - `spawn.transform.force_place = true`（允许替换非空奖励箱）；
+  - `placement.offset = [0,-1,-1]`、`placement.force_place = true`（笼子在同一水平面的北侧一格）；
+- `BossRespawnerBlockEntity.canTransform`/`finishTransform` 的 force 逻辑保留：目标/锚点的 `ChestBlock` 可被替换，其他方块仍拒绝；
+- `BossHomeSavedData` 回到只存 homes + pendingPlacements。
+
+### 12.2 行为说明
+
+- **巫妖**：LichSpawner 从箱子格下探后上移一格，新 home 仍是原 `HomePos`，奖励箱/笼子不漂移；
+- **其余 7 条 base 刷怪笼 Boss（含米诺菇）**：base spawner 把新 home 设为刷怪笼格（原奖励箱格），下一轮死亡箱子在该格下方一格，笼子/刷怪笼继续向下推进。这是“强制在箱子格刷怪 + 不做 home 重设”的直接结果，按用户要求保留；
+- **所有 8 条的奖励箱内容都会在激活时被替换/销毁**；想保留请先取走；
+- 8 条 force 规则不会触发 `anchor_occupied` / `target_occupied` 提示；该提示只保留给非 force 的自定义规则。
+
+### 12.3 验证
+
+```text
+gradlew.bat test   → 106 tests, 0 failures
+gradlew.bat build  → BUILD SUCCESSFUL
+```
+
+移除 pending override 测试（107 → 106）；保留 `spawner_offset`/`force_place` 解析/快照、8 条主线的 `offset/force/spawner_offset`、`BuiltinEntriesTest` 的默认值断言。
+
+### 12.4 文档
+
+README、`docs/twilight-forest-mapping.md`、本计划、B 方案设计、人工验收清单均已改为“8 条全部 force、全部 `[0,-1,0]`、无 home 重设、无旧笼迁移”。
+
+---
+
+## 13. 第四轮（2026-11-03）：笼子偏移改为 `[0,-1,1]`
+
+用户实测第三版符合预期，只要求把 8 条暮色主线的 `placement.offset` 从北侧 `[0,-1,-1]` 统一改为南侧 `[0,-1,1]`，更美观。
+
+### 13.1 已实施
+
+- 8 条主线 `placement.twilightforest.offset = [0,-1,1]`；
+- 其余不变：`placement.force_place:true`、`spawner_offset:[0,-1,0]`、`spawn.transform.force_place:true`；
+- 笼子位置：`HomePos + [0,-1,1]`（奖励箱南侧一格、同一水平面）；
+- 刷怪笼位置：`HomePos + [0,-1,0]`（奖励箱格，替换箱子）；
+- 只改 JSON + `SchemaAdditionsTest` 的 offset.z 断言（-1 → 1）+ 文档；无代码逻辑改动。
+
+### 13.2 验证
+
+```text
+gradlew.bat test   → 106 tests, 0 failures
+gradlew.bat build  → BUILD SUCCESSFUL
+```
+
+### 13.3 文档
+
+README、`docs/twilight-forest-mapping.md`、B 方案设计、人工验收清单均已把笼子偏移改为 `[0,-1,1]` / 南侧；本计划第 10–12 节的 `[0,-1,-1]` 保留为历史记录。
+
+---
+
+## 14. 第五轮（2026-11-03）：除巫妖外 `spawner_offset` 回 `[0,0,0]`
+
+实机测试确认：8 条都把刷怪笼放到奖励箱格 `[0,-1,0]` 时，**除巫妖外**的 base 刷怪笼会把新 home 设为箱子格，下一轮继续向下推进，笼子位置不断下移。
+
+### 14.1 已实施
+
+- **巫妖**：保持 `spawner_offset:[0,-1,0]`，刷怪笼在奖励箱格；LichSpawner 自己上移一格，home 仍为原 `HomePos`；
+- **其余 7 条**（娜迦、米诺菇、九头蛇、幻影骑士、暮初恶魂、雪怪首领、冰雪女王）：`spawner_offset:[0,0,0]`，刷怪笼在 `HomePos`；base 刷怪笼的 home 就是 `HomePos`，不再下移；
+- 8 条全部保留 `spawn.transform.force_place:true`；
+- `placement.offset` 仍为 `[0,-1,1]`（笼子在奖励箱南侧、同一水平面）；
+- 其余 7 条的奖励箱（`HomePos.below()`）保留；巫妖的奖励箱格被刷怪笼替换；
+- `SchemaAdditionsTest` 的 `spawner_offset` 断言改为“巫妖 -1、其余 0”，force 仍全为 true。
+
+### 14.2 验证
+
+```text
+gradlew.bat test   → 106 tests, 0 failures
+gradlew.bat build  → BUILD SUCCESSFUL
+```
+
+### 14.3 文档
+
+README、`docs/twilight-forest-mapping.md`、B 方案设计、人工验收清单均已改为“巫妖 `[0,-1,0]`、其余 7 条 `[0,0,0]`、8 条 force true、笼子 `[0,-1,1]`”。
 
