@@ -417,6 +417,7 @@ class BossHomeSavedDataTest {
             assertEquals(e.block(), a.block());
             assertEquals(e.delayTicks(), a.delayTicks());
             assertEquals(e.allowPeaceful(), a.allowPeaceful());
+            assertArrayEquals(e.spawnerOffset(), a.spawnerOffset(), "transform.spawnerOffset");
             assertEquals(e.at(), a.at(), "transform.at");
         }
     }

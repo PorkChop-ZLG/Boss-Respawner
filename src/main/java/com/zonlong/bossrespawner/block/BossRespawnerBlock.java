@@ -8,6 +8,7 @@ import com.zonlong.bossrespawner.blockentity.BossRespawnerBlockEntity;
 import com.zonlong.bossrespawner.init.ModBlockEntities;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -105,6 +106,17 @@ public class BossRespawnerBlock extends BaseEntityBlock {
                     }
                 }
                 level.gameEvent(GameEvent.BLOCK_CHANGE, pos, GameEvent.Context.of(player, level.getBlockState(pos)));
+            } else {
+                // Do not leave the player guessing when a chest or a block occupies the home/target cell.
+                switch (be.getLastTransformFailure()) {
+                    case ANCHOR_OCCUPIED -> player.displayClientMessage(
+                            Component.translatable("boss_respawner.message.anchor_occupied"), false);
+                    case TARGET_OCCUPIED -> player.displayClientMessage(
+                            Component.translatable("boss_respawner.message.target_occupied"), false);
+                    default -> {
+                        // Other refusals already log their own reason; no player-facing message yet.
+                    }
+                }
             }
         }
         return ItemInteractionResult.sidedSuccess(level.isClientSide);

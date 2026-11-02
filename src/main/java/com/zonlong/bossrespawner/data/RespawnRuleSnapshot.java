@@ -171,6 +171,7 @@ public record RespawnRuleSnapshot(
             t.putInt("DelayTicks", transform.delayTicks());
             t.putBoolean("AllowPeaceful", transform.allowPeaceful());
             t.putString("Nbt", transform.nbt());
+            t.putIntArray("SpawnerOffset", transform.spawnerOffset());
             t.putString("At", transform.at().name());
             tag.put("Transform", t);
         }
@@ -201,6 +202,7 @@ public record RespawnRuleSnapshot(
                     t.getInt("DelayTicks"),
                     t.getBoolean("AllowPeaceful"),
                     t.getString("Nbt"),
+                    spawnerOffsetFromTag(t),
                     at));
         }
 
@@ -224,6 +226,12 @@ public record RespawnRuleSnapshot(
             throw new IllegalArgumentException("spawn snapshot is missing '" + key + "'");
         }
         return tag.getCompound(key);
+    }
+
+    /** Older snapshots have no {@code SpawnerOffset}; the default keeps their in-place behaviour. */
+    private static int[] spawnerOffsetFromTag(CompoundTag transformTag) {
+        int[] value = transformTag.getIntArray("SpawnerOffset");
+        return value.length == 3 ? value : new int[]{0, 0, 0};
     }
 
     // ------------------------------------------------------------------ duplicate

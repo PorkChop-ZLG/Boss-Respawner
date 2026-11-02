@@ -19,6 +19,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -178,7 +179,8 @@ class BuiltinEntriesTest {
             List<String> spawnKeys = "transform".equals(spawnMode)
                     // Only what a hand-off can use: one block, an animation delay, the Peaceful gate, NBT
                     // and where the block is placed (cage or home anchor).
-                    ? List.of("transform_block", "delay_ticks", "allow_peaceful", "nbt", "at")
+                    ? List.of("transform_block", "delay_ticks", "allow_peaceful", "nbt",
+                    "spawner_offset", "at")
                     : List.of("delay_ticks", "require_player_nearby", "player_range", "allow_peaceful",
                     "count", "spawn_offset", "nbt", "finalize_spawn", "max_attempts", "retry_interval_ticks");
             for (String key : spawnKeys) {
@@ -243,7 +245,11 @@ class BuiltinEntriesTest {
                 continue;
             }
             checked++;
-            assertEquals(RespawnEntry.PlacementMode.TWILIGHTFOREST, loaded.entry().placement().mode(),
+            // The Quest Ram is a normal Animal, not a BaseTFBoss: it keeps the pre-change home mode.
+            RespawnEntry.PlacementMode expectedMode = "quest_ram.json".equals(loaded.name())
+                    ? RespawnEntry.PlacementMode.HOME
+                    : RespawnEntry.PlacementMode.TWILIGHTFOREST;
+            assertEquals(expectedMode, loaded.entry().placement().mode(),
                     loaded.name() + ": resolved mode");
             JsonObject modeObject = placementModeObject(loaded);
 
@@ -419,6 +425,11 @@ class BuiltinEntriesTest {
                         rule.transform().allowPeaceful(), name);
                 assertEquals(RespawnEntry.PlaceAt.valueOf(transform.get("at").getAsString().toUpperCase()),
                         rule.transform().at(), name + ": transform.at");
+                assertArrayEquals(new int[]{
+                                transform.getAsJsonArray("spawner_offset").get(0).getAsInt(),
+                                transform.getAsJsonArray("spawner_offset").get(1).getAsInt(),
+                                transform.getAsJsonArray("spawner_offset").get(2).getAsInt()},
+                        rule.transform().spawnerOffset(), name + ": transform.spawner_offset");
                 assertTrue(rule.summon() == null, name + ": a transform rule must not carry a summon object");
             } else {
                 JsonObject summon = spawn.getAsJsonObject("summon");

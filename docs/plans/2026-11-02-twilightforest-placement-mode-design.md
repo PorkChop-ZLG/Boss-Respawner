@@ -1,8 +1,10 @@
 # Twilight Forest 放置模式（B 方案）设计
 
 **日期：** 2026-11-02
-**状态：** 已批准并实现
-**方案：** B —— 固定锚点 + 死亡结算 + 笼子旁置（不清空/不挖掉奖励箱）
+**状态：** 已批准并实现（含 2026-11-02 第一版实机问题修复）
+**方案：** B —— 固定锚点 + 死亡结算 + 笼子旁置（不清空/不挖掉奖励箱；娜迦上层箱子例外，见修复计划）
+**后续修复：** 8 条主线 `require_ground:false`、巫妖 `spawner_offset: [0,1,0]`、娜迦激活失败提示、谜题羊改回 `home` + `summon`。详见
+[2026-11-02 Twilight Forest 模式问题诊断与修复计划](2026-11-02-twilightforest-mode-fix-plan.md)。
 
 ## 问题
 
@@ -74,7 +76,7 @@
 - `spawn.transform.at` 新增，默认 `"cage"`。
 - `PendingPlacementTask` 新增可选 `WaitForEntityUuid` / `DeathDimension` / `DeathPos`；
   旧任务无这些字段时按普通延迟任务加载。
-- 9 条暮色森林 JSON：8 条 `spawn.mode: transform` + `at: "anchor"`，谜题羊保持 `summon`；
+- 8 条暮色主线 JSON：8 条 `spawn.mode: transform` + `at: "anchor"`（巫妖 `spawner_offset: [0,1,0]`）；谜题羊不是 TF Boss，使用 `home` + `summon`。
   `place_delay_ticks: 0`（等待实体移除取代了猜延迟）。
 
 ## 数据流
@@ -99,8 +101,13 @@ death → TF mode → 过滤克隆/非终局骑士 → 读 HomePos
 
 ## 测试
 
-- 单元：`twilightforest` 模式解析、`transform.at` 解析/快照、`PendingPlacementTask` 等待字段
-  往返、`HomePos` / `MasterLich` NBT 契约、9 条内置 JSON 的模式/刷怪笼/`at`。
-- 构建：`gradlew.bat test`（当前 100+ 项全绿）。
+- 单元：`twilightforest` 模式解析、`transform.at` / `spawner_offset` 解析/快照、`PendingPlacementTask` 等待字段
+  往返、`HomePos` / `MasterLich` NBT 契约、8 条主线 TF 内置 JSON + 谜题羊 `home` 的解析。
+- 构建：`gradlew.bat test`（当前 106 项全绿）。
 - 实机（待用户）：逐个 TF Boss 验证箱子可开、笼子在旁、激活后 Boss 正确生成、home 不漂移；
-  幻影骑士只出 1 笼；巫妖克隆不触发。
+  幻影骑士只出 1 笼；巫妖克隆不触发；8 条主线允许悬空。
+
+## 后续
+
+实机测试发现的问题与修复计划见
+[2026-11-02 Twilight Forest 模式问题诊断与修复计划](2026-11-02-twilightforest-mode-fix-plan.md)。

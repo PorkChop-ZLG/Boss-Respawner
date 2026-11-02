@@ -44,7 +44,7 @@
 
 ## 已完成的模组联动
 
-以下内置规则中，9 条暮色森林条目使用 `twilightforest` 模式，其余使用 `home` 模式。详见 `src/main/resources/data/**/boss_respawner/entries/*.json`，每个文件都显式写出了全部可选字段，可直接作为模板抄改。
+以下内置规则中，8 条暮色森林主线 Boss 使用 `twilightforest` 模式，谜题羊与其余条目使用 `home` 模式。详见 `src/main/resources/data/**/boss_respawner/entries/*.json`，每个文件都显式写出了全部可选字段，可直接作为模板抄改。
 
 ### 传奇怪物（Legendary Monsters）
 
@@ -103,9 +103,11 @@
 | 冰雪女王 | `twilightforest:snow_queen` | 魔法地图核心 | `twilightforest:magic_map_focus` |
 | 谜题羊 | `twilightforest:quest_ram` | 魔法地图核心 | `twilightforest:magic_map_focus` |
 > 注：暮色森林为 8 个主线 Boss 各做了一个**专属奖杯**，但它们全是"打完才有"的掉落物，不满足复活钥匙要求，因此统一使用可合成的**魔法地图核心**。
-> 注：该模组的 Boss 战利品可能通过**箱子**发放（`darktower_boss.json` 就是一个装着暮初恶魂整套战利品的箱子表），且 Boss 场地遍布箱子。9 个条目使用 `placement.mode: "twilightforest"`：Boss 死亡后**不直接放笼**，而是等实体被 `remove(KILLED)`（此时暮色森林已经把奖励箱放在 Boss 的 `HomePos` 下方一格）、再在 `HomePos` 旁边（默认 `offset: [1,0,0]`）放笼；**不碰奖励箱，也不需要清空或挖掉它**。8 个主线 Boss 的 `spawn.mode` 是 `transform` + `at: "anchor"`，激活后把对应 `*_boss_spawner` 放到 `HomePos`，由暮色森林自己生成 Boss；谜题羊没有刷怪笼，保持 `summon`。
+> 注：该模组的 Boss 战利品可能通过**箱子**发放（`darktower_boss.json` 就是一个装着暮初恶魂整套战利品的箱子表），且 Boss 场地遍布箱子。8 个主线 Boss 使用 `placement.mode: "twilightforest"`：Boss 死亡后**不直接放笼**，而是等实体被 `remove(KILLED)`（此时暮色森林已经把奖励箱放在 Boss 的 `HomePos` 下方一格）、再在 `HomePos` 旁边（默认 `offset: [1,0,0]`）放笼；**不碰奖励箱，也不需要清空或挖掉它**。这 8 条把 `require_ground` 设为 `false`，允许笼子在悬空/被破坏的场地生成。谜题羊是普通生物，使用 `home` + `summon`，与改版前一致。
+> 注：8 个主线 Boss 的 `spawn.mode` 是 `transform` + `at: "anchor"`，激活后把对应 `*_boss_spawner` 放到 `HomePos`，由暮色森林自己生成 Boss。巫妖的刷怪笼额外使用 `spawner_offset: [0,1,0]`：它的刷怪笼会先下探再上移一格，必须放在 `HomePos` 上方一格，否则每次复活都会把巫妖的 home 往上推一格。
+> 注：如果 `HomePos` 上恰好叠了第二个奖励箱且里面还有物品，激活会被拒绝，并给玩家一条“请先清空出生点”的提示；取走该箱物品后即可激活。这是为了避免删除奖励箱内容；笼子本身不覆盖箱子。
 > 注：`avoid_blocks` 的语义是**搜索第一趟强制避开**：第一趟会绕开箱子去找别的位置；万一第一趟一无所获，第二趟会忽略避让再搜一遍，因此**避让不会导致笼子放不出来**，最坏的结果只是笼子坐在箱子上面（候选位必须是空气或可替换方块，所以箱子本身永远不会被搜索选中）。`twilightforest` 模式额外把 `search_failure_fallback` 设为 `false`，宁可这一次不放，也不覆盖奖励箱。详见下方 [`avoid_blocks` 的完整语义](#avoid_blocks搜索第一趟强制避开)。
-> 注：谜题羊是一次性任务 NPC，被击杀后任务将永久无法完成（它死亡不掉落任何东西），因此同样纳入。`twilightforest` 模式只读它的 `HomePos`；不会修改它，也不会读取它的其他数据。
+> 注：谜题羊是一次性任务 NPC，被击杀后任务将永久无法完成（它死亡不掉落任何东西），因此同样纳入。它不是 `BaseTFBoss`，使用 `placement.mode: "home"` + `spawn.mode: "summon"`，由本模组的 `EntityHomeRegistrationHandler` 登记首次观察 home；不会读取或修改它的 `HomePos`。
 
 ### 钥匙选取原则
 
@@ -164,9 +166,9 @@ data/<namespace>/boss_respawner/entries/<任意文件名>.json
 
 | 模式 | 锚点 | 说明 |
 |---|---|---|
-| `home` | 本模组登记的出生点 | 其余 23 条内置规则使用此模式。重生笼会回到 Boss 原本所在的竞技场/结构，而不是它倒下的地方。 |
+| `home` | 本模组登记的出生点 | 其余 24 条内置规则使用此模式（含谜题羊）。重生笼会回到 Boss 原本所在的竞技场/结构，而不是它倒下的地方。 |
 | `death` | 生物死亡位置 | 传统行为。适合没有固定竞技场的 Boss。 |
-| `twilightforest` | 暮色森林实体的 `HomePos` | 9 条暮色森林规则使用此模式。死亡后先等实体 `remove(KILLED)`（奖励箱已生成），再把笼子放在 `HomePos + offset`（旁边），**不覆盖、不要求清空奖励箱**。 |
+| `twilightforest` | 暮色森林实体的 `HomePos` | 8 条暮色森林主线 Boss 使用此模式。死亡后先等实体 `remove(KILLED)`（奖励箱已生成），再把笼子放在 `HomePos + offset`（旁边），**不覆盖、不要求清空奖励箱**；`require_ground: false` 允许悬空。 |
 
 `placement.mode` **是必填字段，解析器不会隐式补默认值**。内置规则全部显式写出了自己的 `mode`。
 
@@ -366,13 +368,13 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
 | `offset` | int[3] | `[0, 0, 0]` | 相对模式基准点（死亡位置 / 出生点 / 暮色森林 `HomePos`）的偏移，只应用一次 |
-| `place_delay_ticks` | int | `0` | Boss 死后等待多少 tick 再放置重生笼，最小 `0`。用于**等过 Boss 的死亡动画与它的战利品箱子**。`twilightforest` 模式**不使用这个字段**：它改为等待实体 `remove(KILLED)`，比按 Boss 猜一个延迟更可靠；这 9 条写 `0`。 |
+| `place_delay_ticks` | int | `0` | Boss 死后等待多少 tick 再放置重生笼，最小 `0`。用于**等过 Boss 的死亡动画与它的战利品箱子**。`twilightforest` 模式**不使用这个字段**：它改为等待实体 `remove(KILLED)`，比按 Boss 猜一个延迟更可靠；这 8 条写 `0`。谜题羊保留改版前的 `home` 配置，`place_delay_ticks` 仍为 `30`。 |
 | `force_place` | bool | `false` | 是否跳过搜索，直接在 `基准点 + offset` 放置。**会覆盖该处的任何方块**，见下方警示 |
 | `search_failure_fallback` | bool | `true` | 两趟搜索都失败后是否在该坐标强制放置。**同样会覆盖该处的任何方块**，见下方警示 |
 | `search_down` | int | `32` | 从基准点向下搜索的最大格数，最小 `0` |
 | `search_up` | int | `16` | 从基准点向上搜索的最大格数，最小 `0` |
 | `horizontal_radius` | int | `4` | 垂直搜索失败后水平搜索的半径，最小 `0` |
-| `require_ground` | bool | `true` | 搜索时是否要求下方有可站立的完整方块 |
+| `require_ground` | bool | `true` | 搜索时是否要求下方有可站立的完整方块。8 条暮色森林主线 Boss 设为 `false`，允许悬空放置（Ur-Ghast 的空中场地、被破坏的竞技场、蘑菇密集的米诺菇房间）；谜题羊的 `home` 配置保持 `true`。 |
 | `avoid_fluids` | bool | `false` | 搜索时是否避开流体 |
 | `avoid_blocks` | string[] | `[]` | **搜索第一趟强制避开**的方块 ID；第一趟无果时会忽略它再搜一遍，因此**避让永远不会导致放不出笼子** |
 
@@ -386,7 +388,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 - 两趟搜索都失败且 `search_failure_fallback: true`：在该坐标强制放置（覆盖该处方块）。
 - 两趟搜索都失败且 `search_failure_fallback: false`：**不放置**并输出警告。这是现在**唯一**一条会主动放弃放置的分支。
 - **`home` 模式搜索失败绝不回退到死亡位置。**
-- **`twilightforest` 模式的锚点是 Boss 自己的 `HomePos`，`offset` 会把笼子放到它旁边（默认 `[1,0,0]`，即东侧一格）；笼子不会放在 `HomePos` 本身或奖励箱所在的那一格。** 这 9 条规则把 `search_failure_fallback` 设为 `false`：搜索找不到空位时宁可这一次不放，也不覆盖奖励箱。
+- **`twilightforest` 模式的锚点是 Boss 自己的 `HomePos`，`offset` 会把笼子放到它旁边（默认 `[1,0,0]`，即东侧一格）；笼子不会放在 `HomePos` 本身或奖励箱所在的那一格。** 这 8 条规则把 `search_failure_fallback` 设为 `false`：搜索找不到空位时宁可这一次不放，也不覆盖奖励箱；它们同时把 `require_ground` 设为 `false`，允许悬空。
 - 无 Home 记录：不放置、不使用死亡点，并输出含实体 ID、UUID、死亡维度与坐标的警告。
 
 > **⚠️ 明确警示（给整合包作者）：** `force_place: true` 与 `search_failure_fallback: true` 这两条路径**跳过搜索，并且会覆盖目标位置上的任何方块**——宝箱、基岩、别的模组的 BOSS 刷怪笼、灾变祭坛都照overwrite，**旧方块及其内容直接蒸发、不掉落**。这是刻意的设计：这两条路径的语义就是"无论如何都必须把笼子放出来"，不存在任何"保护方块"底线可以不覆盖它们。
@@ -453,7 +455,8 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 | `delay_ticks` | int | 选填 | `20` | 点亮后等待多少 tick 再替换方块，最小 `0`。用于让重生笼播完开启动画 |
 | `allow_peaceful` | bool | 选填 | `false` | 是否允许在和平难度下转换 |
 | `nbt` | string | 选填 | `""` | 写到新方块 BlockEntity 上的 SNBT，等同 `/setblock` 命令的尾随标签。留空表示不改动 BlockEntity |
-| `at` | string | 选填 | `"cage"` | `"cage"`：在重生笼自己的位置替换（旧行为）；`"anchor"`：删掉重生笼，把目标方块放到笼子保存的 `home` 锚点。`twilightforest` 的 8 个主线 Boss 必须用 `"anchor"`，否则刷怪笼会把 Boss 的 home 往下一格移动 |
+| `spawner_offset` | int[3] | 选填 | `[0,0,0]` | 目标方块相对笼子 home 锚点的偏移，仅在 `at: "anchor"` 时生效。默认零保持旧行为；巫妖必须用 `[0,1,0]`，因为它的刷怪笼会先下探再上移一格 |
+| `at` | string | 选填 | `"cage"` | `"cage"`：在重生笼自己的位置替换（旧行为）；`"anchor"`：删掉重生笼，把目标方块放到笼子保存的 `home` 锚点（再叠加 `spawner_offset`）。`twilightforest` 的 8 个主线 Boss 必须用 `"anchor"` |
 
 #### `spawn.mode: "transform"`：交给别的方块生成
 
@@ -473,19 +476,23 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
     "delay_ticks": 20,
     "allow_peaceful": false,
     "nbt": "",
+    "spawner_offset": [0, 0, 0],
     "at": "anchor"
   }
 }
 ```
 
-玩家用钥匙右键 → 重生笼先播开启动画 → 动画结束后**笼子消失**，对应刷怪笼出现在 Boss 的 `HomePos` → 玩家在 9 格内时刷怪笼自动生成 Boss 并**销毁自身**。`at: "anchor"` 是关键：刷怪笼必须占据 `HomePos`，不能占据笼子旁边的位置，否则刷怪笼会把 Boss 的 home 设为笼子位置，下一次奖励箱就跟着往下走一格。
+其余 7 个主线 Boss 只需替换 `transform_block`；**巫妖**例外，使用 `"spawner_offset": [0, 1, 0]`，因为 `LichSpawnerBlockEntity` 会从刷怪笼位置下探到最低空气格后再上移一格，必须把它放在巫妖 home 上方一格才能让新 home 仍是原来的 home。
+
+玩家用钥匙右键 → 重生笼先播开启动画 → 动画结束后**笼子消失**，对应刷怪笼出现在 Boss 的 `HomePos`（巫妖为 `HomePos + [0,1,0]`）→ 玩家在 9 格内时刷怪笼自动生成 Boss 并**销毁自身**。`at: "anchor"` 是关键：刷怪笼不能占据笼子旁边的位置，否则刷怪笼会把 Boss 的 home 设为笼子位置，下一次奖励箱就跟着漂移。
 
 注意事项：
 
 - 目标方块由 ID 解析，**没有编译期依赖**，因此适用于任何模组
 - 和平难度下默认**拒绝转换**（保留重生笼、不消耗钥匙），除非规则设了 `allow_peaceful: true`。原因：暮色的刷怪笼不会在和平难度触发，而它是 `strength(-1.0F, ...)` 即**不可破坏**，转换过去会留下一个拆不掉的方块
-- `mode` 为 `transform` 时**只有 `transform` 子对象生效**（`transform_block` / `delay_ticks` / `allow_peaceful` / `nbt` / `at`）；`count` / `spawn_offset` / `player_range` / `require_player_nearby` / `finalize_spawn` / `max_attempts` / `retry_interval_ticks` 都不参与——只换一个方块，没有"数量"、没有偏移、`setBlock` 也不会失败
-- `at: "anchor"` 时，如果 `home` 锚点被方块占据：空的原版/暮色箱子会被移除后放入刷怪笼；非空箱子、玩家建筑等则**拒绝激活**（笼子保持不变、不消耗钥匙），需要先清空/取走
+- `mode` 为 `transform` 时**只有 `transform` 子对象生效**（`transform_block` / `delay_ticks` / `allow_peaceful` / `nbt` / `spawner_offset` / `at`）；`count` / `spawn_offset` / `player_range` / `require_player_nearby` / `finalize_spawn` / `max_attempts` / `retry_interval_ticks` 都不参与——只换一个方块，没有"数量"、没有偏移、`setBlock` 也不会失败
+- `at: "anchor"` 时，如果 `home` 锚点或目标格被方块占据：空的原版/暮色箱子会被移除后放入刷怪笼；非空箱子、玩家建筑等则**拒绝激活**（笼子保持不变、不消耗钥匙），并通过 `boss_respawner.message.anchor_occupied` / `target_occupied` 给玩家提示
+- 巫妖的 `spawner_offset` 不会改变笼子位置；笼子仍在 `HomePos + placement.offset`，只有刷怪笼被放到锚点上方一格
 
 #### `duplicate`：重复重生笼策略
 
@@ -636,11 +643,11 @@ gradlew.bat runServer
 gradlew.bat runClient
 ```
 
-`gradlew.bat test` 运行的是不启动游戏的纯逻辑单元测试，涵盖：
+`gradlew.bat test` 运行的是不启动游戏的纯逻辑单元测试（当前 106 项），涵盖：
 
 - schema v4 的解析与各类拒绝路径（含 v3 结构、v1 扁平 `placement`、v2 扁平 `spawn`、缺失 `mode`、缺失模式对象、非法模式、版本门），以及"残留的 `protected_blocks` 键不产生任何效果"；
-- `twilightforest` 放置模式、`spawn.transform.at` 的解析/快照往返，以及 Twilight Forest `HomePos` / `MasterLich` 两个只读 NBT 契约；
+- `twilightforest` 放置模式、`spawn.transform.at` / `spawner_offset` 的解析/快照往返，以及 Twilight Forest `HomePos` / `MasterLich` 两个只读 NBT 契约；
 - `BossHomeSavedData` 的 NBT 往返、去重合并、区块索引、放置延迟、等待源实体移除的任务字段与 `dataVersion` 拒绝策略；
-- 全部 32 个内置 JSON 的真实解析验证、字段默认值与迁移后的 `avoid_blocks` 列表（暮色森林 9 条各 18 项、其余各 1 项），以及 9 条暮色森林规则的 `twilightforest` 模式/原生刷怪笼/`at: "anchor"`；
+- 全部 32 个内置 JSON 的真实解析验证、字段默认值与迁移后的 `avoid_blocks` 列表（9 个暮色条目——8 条 TF + 谜题羊——各 18 项、其余各 1 项），以及 8 条暮色森林主线 Boss 的 `twilightforest` 模式/原生刷怪笼/`at: "anchor"`/`require_ground:false`、巫妖的 `spawner_offset: [0,1,0]`、谜题羊的 `home` + `summon`；
 - 验收数据包（`docs/examples/acceptance-datapack`）的 6 条正向 / 4 条负向条目校验；
-- 对已删除全局配置项（含 `protectedBlockIds`）与已删除保护分支的源码引用检查，以及 `PlacementResolver` 两趟搜索的接线检查。
+- 语言文件键集一致性（含激活失败提示），以及对已删除全局配置项（含 `protectedBlockIds`）与已删除保护分支的源码引用检查、`PlacementResolver` 两趟搜索的接线检查。

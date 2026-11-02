@@ -19,6 +19,7 @@ import net.minecraft.world.level.Level;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -59,7 +60,7 @@ class SchemaAdditionsTest {
     }
 
     @Test
-    @DisplayName("a transform rule parses into its own object with its five fields")
+    @DisplayName("a transform rule parses into its own object with its six fields")
     void transformRuleParses() {
         RespawnEntry entry = parseOrFail("{}", """
                 {
@@ -80,7 +81,26 @@ class SchemaAdditionsTest {
         assertEquals(20, rule.delayTicks());
         assertTrue(rule.allowPeaceful());
         assertEquals("{Foo:1}", rule.nbt());
+        assertArrayEquals(new int[]{0, 0, 0}, rule.spawnerOffset(),
+                "spawner_offset defaults to zero for old rules");
         assertEquals(RespawnEntry.PlaceAt.CAGE, rule.at(), "at defaults to cage for old rules");
+    }
+
+    @Test
+    @DisplayName("spawner_offset is parsed for the Lich hand-off")
+    void spawnerOffsetIsParsed() {
+        RespawnEntry entry = parseOrFail("{}", """
+                {
+                  "mode": "transform",
+                  "transform": {
+                    "transform_block": "twilightforest:lich_boss_spawner",
+                    "at": "anchor",
+                    "spawner_offset": [0, 1, 0]
+                  }
+                }
+                """);
+
+        assertArrayEquals(new int[]{0, 1, 0}, entry.spawn().transform().spawnerOffset());
     }
 
     @Test
@@ -109,14 +129,15 @@ class SchemaAdditionsTest {
     }
 
     @Test
-    @DisplayName("transform.at survives the rule snapshot")
+    @DisplayName("transform.at and spawner_offset survive the rule snapshot")
     void transformAtSurvivesSnapshot() {
         RespawnEntry entry = parseOrFail("{}", """
                 {
                   "mode": "transform",
                   "transform": {
-                    "transform_block": "twilightforest:knight_phantom_boss_spawner",
-                    "at": "anchor"
+                    "transform_block": "twilightforest:lich_boss_spawner",
+                    "at": "anchor",
+                    "spawner_offset": [0, 1, 0]
                   }
                 }
                 """);
@@ -124,6 +145,7 @@ class SchemaAdditionsTest {
         RespawnRuleSnapshot restored = RespawnRuleSnapshot.fromTag(RespawnRuleSnapshot.of(entry).toTag());
 
         assertEquals(RespawnEntry.PlaceAt.ANCHOR, restored.spawn().transform().at());
+        assertArrayEquals(new int[]{0, 1, 0}, restored.spawn().transform().spawnerOffset());
     }
 
     @Test
@@ -256,13 +278,13 @@ class SchemaAdditionsTest {
     }
 
     @Test
-    @DisplayName("Twilight Forest entries use the twilightforest placement mode and native spawners")
+    @DisplayName("Twilight Forest bosses use the twilightforest mode; the Quest Ram keeps home + summon")
     void twilightForestRulesUseTwilightforestMode() throws IOException {
         // Twilight Forest drops boss loot into a chest when the boss is removed. The dedicated mode waits
         // for that removal and places the cage beside the boss's own HomePos, so the chest keeps its open
         // top and the boss's home does not move between cycles.
         for (String boss : new String[]{"naga", "lich", "minoshroom", "hydra", "knight_phantom", "ur_ghast",
-                "alpha_yeti", "snow_queen", "quest_ram"}) {
+                "alpha_yeti", "snow_queen"}) {
             JsonObject json = builtin("twilightforest", boss);
             JsonObject placement = json.getAsJsonObject("placement");
             assertEquals("twilightforest", placement.get("mode").getAsString(),
@@ -273,21 +295,32 @@ class SchemaAdditionsTest {
                     boss + ": the removal wait replaces the old per-boss delay guess");
             assertFalse(modeObject.get("search_failure_fallback").getAsBoolean(),
                     boss + ": a failed search must not force the cage over the chest");
+            assertFalse(modeObject.get("require_ground").getAsBoolean(),
+                    boss + ": TF cages must be allowed to float (Ur-Ghast, broken arenas)");
 
             JsonObject spawn = json.getAsJsonObject("spawn");
-            if ("quest_ram".equals(boss)) {
-                // The Quest Ram has no boss spawner block; it keeps the summon path.
-                assertEquals("summon", spawn.get("mode").getAsString(), boss + ": spawn.mode");
-            } else {
-                assertEquals("transform", spawn.get("mode").getAsString(), boss + ": spawn.mode");
-                assertEquals(boss + "_boss_spawner",
-                        spawn.getAsJsonObject("transform").get("transform_block").getAsString()
-                                .replace("twilightforest:", ""),
-                        boss + ": must use its native boss spawner");
-                assertEquals("anchor", spawn.getAsJsonObject("transform").get("at").getAsString(),
-                        boss + ": the spawner belongs at the home anchor");
-            }
+            assertEquals("transform", spawn.get("mode").getAsString(), boss + ": spawn.mode");
+            JsonObject transform = spawn.getAsJsonObject("transform");
+            assertEquals(boss + "_boss_spawner",
+                    transform.get("transform_block").getAsString().replace("twilightforest:", ""),
+                    boss + ": must use its native boss spawner");
+            assertEquals("anchor", transform.get("at").getAsString(),
+                    boss + ": the spawner belongs at the home anchor");
+            int expectedY = "lich".equals(boss) ? 1 : 0;
+            assertEquals(expectedY, transform.getAsJsonArray("spawner_offset").get(1).getAsInt(),
+                    boss + ": the Lich spawner needs the one-block-above offset; all others are zero");
         }
+
+        // The Quest Ram is a normal Animal (no BaseTFBoss, no loot chest): keep the pre-change behaviour.
+        JsonObject quest = builtin("twilightforest", "quest_ram");
+        JsonObject placement = quest.getAsJsonObject("placement");
+        assertEquals("home", placement.get("mode").getAsString(), "quest_ram: placement.mode");
+        JsonObject home = placement.getAsJsonObject("home");
+        assertEquals(30, home.get("place_delay_ticks").getAsInt(), "quest_ram: old home delay");
+        assertTrue(home.get("search_failure_fallback").getAsBoolean(), "quest_ram: old fallback");
+        assertTrue(home.get("require_ground").getAsBoolean(), "quest_ram: old ground rule");
+        assertEquals("summon", quest.getAsJsonObject("spawn").get("mode").getAsString(),
+                "quest_ram: summon");
     }
 
     @Test

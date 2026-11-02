@@ -28,5 +28,7 @@
 
   "config.jade.plugin_boss_respawner.cage_contents": "Respawner Contents",
 
-  "boss_respawner.message.respawn_failed": "The boss respawner at %s failed to summon the boss after several attempts and has reset."
+  "boss_respawner.message.respawn_failed": "The boss respawner at %s failed to summon the boss after several attempts and has reset.",
+  "boss_respawner.message.anchor_occupied": "The respawner's home is occupied; clear it first (empty the loot chest if there is one).",
+  "boss_respawner.message.target_occupied": "The respawner's target position is occupied; clear it first."
 }

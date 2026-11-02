@@ -503,6 +503,7 @@ public record RespawnEntry(
                         Math.max(0, getInt(obj, "delay_ticks", 20)),
                         getBoolean(obj, "allow_peaceful", false),
                         getString(obj, "nbt", ""),
+                        getIntArray(obj, "spawner_offset", new int[]{0, 0, 0}),
                         parsePlaceAt(entryId, obj))));
             }
 
@@ -583,11 +584,15 @@ public record RespawnEntry(
      *                      avoids stranding a block the player cannot remove
      * @param nbt           NBT written to the new block's block entity, exactly as the trailing tag of a
      *                      {@code /setblock} command would be. Empty leaves the block entity untouched
+     * @param spawnerOffset offset of the target block from the cage's home anchor; only meaningful with
+     *                      {@link PlaceAt#ANCHOR}. The default is zero, which keeps the old behaviour.
+     *                      Twilight Forest's Lich spawner must be placed one block above the Lich's home,
+     *                      because that spawner descends to the lowest air block and then moves up one.
      * @param at            where the target block is placed; {@link PlaceAt#CAGE} keeps the old in-place
      *                      behaviour, {@link PlaceAt#ANCHOR} moves it to the cage's stored home anchor
      */
     public record TransformRule(ResourceLocation block, int delayTicks, boolean allowPeaceful, String nbt,
-                                PlaceAt at) {
+                                int[] spawnerOffset, PlaceAt at) {
     }
 
     public record DuplicateRule(String mode, int searchRadius) {

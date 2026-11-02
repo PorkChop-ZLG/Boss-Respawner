@@ -90,6 +90,29 @@ public class BossRespawnerBlockEntity extends BlockEntity {
     private boolean transformAtAnchor = false;
 
     /**
+     * Offset of the target block from the home anchor, applied only when {@link #transformAtAnchor} is set.
+     *
+     * <p>Default zero keeps the old behaviour. Twilight Forest's Lich spawner needs {@code [0, 1, 0]}:
+     * that spawner descends to the lowest air block and then unconditionally moves up one, so placing it
+     * directly on the Lich's home would move the home up by one block every respawn cycle.
+     */
+    private int[] spawnerOffset = new int[]{0, 0, 0};
+
+    /** Why the most recent {@link #activate(Level)} refused, so the block can give feedback. */
+    public enum TransformFailure {
+        NONE,
+        PEACEFUL,
+        BLOCK_MISSING,
+        NO_ANCHOR,
+        ANCHOR_NOT_LOADED,
+        ANCHOR_OCCUPIED,
+        TARGET_NOT_LOADED,
+        TARGET_OCCUPIED
+    }
+
+    private TransformFailure lastTransformFailure = TransformFailure.NONE;
+
+    /**
      * NBT written to the transformed block's block entity, with the same effect as the trailing tag of a
      * {@code /setblock} command. Empty by default, which leaves the block entity untouched.
      */
@@ -208,6 +231,7 @@ public class BossRespawnerBlockEntity extends BlockEntity {
      *         <em>not</em> consume the key items
      */
     public boolean activate(Level level) {
+        lastTransformFailure = TransformFailure.NONE;
         if (!level.getBlockState(worldPosition).hasProperty(BossRespawnerBlock.LIT)) {
             return false;
         }
@@ -237,52 +261,95 @@ public class BossRespawnerBlockEntity extends BlockEntity {
      */
     private boolean canTransform(Level level) {
         if (level.getDifficulty() == Difficulty.PEACEFUL && !allowPeaceful) {
+            lastTransformFailure = TransformFailure.PEACEFUL;
             DebugLog.info("Respawner at {} will not transform: Peaceful difficulty and allow_peaceful is false",
                     worldPosition);
             return false;
         }
         if (resolveTransformBlock() == null) {
+            lastTransformFailure = TransformFailure.BLOCK_MISSING;
             UniversalBossRespawner.LOGGER.warn(
                     "Respawner at {} is configured to transform into block '{}', which is not installed; "
                             + "leaving the cage in place",
                     worldPosition, transformBlockId);
             return false;
         }
-        if (transformAtAnchor) {
-            if (!hasHomeAnchor()) {
-                UniversalBossRespawner.LOGGER.warn(
-                        "Respawner at {} is configured to place its target block at the home anchor, but "
-                                + "carries no anchor; leaving the cage in place",
-                        worldPosition);
-                return false;
-            }
-            if (homePos.equals(worldPosition)) {
-                return true;
-            }
+        if (!transformAtAnchor) {
+            return true;
+        }
+
+        if (!hasHomeAnchor()) {
+            lastTransformFailure = TransformFailure.NO_ANCHOR;
+            UniversalBossRespawner.LOGGER.warn(
+                    "Respawner at {} is configured to place its target block at the home anchor, but "
+                            + "carries no anchor; leaving the cage in place",
+                    worldPosition);
+            return false;
+        }
+
+        BlockPos target = transformTargetPos();
+        if (!homePos.equals(worldPosition)) {
             if (!level.isLoaded(homePos)) {
+                lastTransformFailure = TransformFailure.ANCHOR_NOT_LOADED;
                 DebugLog.info("Respawner at {} will not transform yet: home anchor {} is not loaded",
                         worldPosition, homePos);
                 return false;
             }
-            BlockState anchorState = level.getBlockState(homePos);
-            if (anchorState.isAir() || anchorState.canBeReplaced()) {
-                return true;
+            if (!isReplaceableOrEmptyChest(level, homePos)) {
+                lastTransformFailure = TransformFailure.ANCHOR_OCCUPIED;
+                UniversalBossRespawner.LOGGER.warn(
+                        "Respawner at {} cannot use the home anchor {} because that cell is occupied by "
+                                + "{}; leave the cage in place and clear/loot it first",
+                        worldPosition, homePos, level.getBlockState(homePos));
+                return false;
             }
-            // A Twilight Forest death chest can end up in the home cell when the boss's random chest type
-            // differs from the previous cycle. An EMPTY chest is harmless to replace; a non-empty one must
-            // be looted first, or the player would lose its contents.
-            if (anchorState.getBlock() instanceof ChestBlock
-                    && level.getBlockEntity(homePos) instanceof Container container
-                    && container.isEmpty()) {
-                return true;
+        }
+
+        // The cage itself may be the target (a rule with zero/net offsets); it will be replaced in place.
+        if (target.equals(worldPosition)) {
+            return true;
+        }
+
+        if (!target.equals(homePos)) {
+            if (!level.isLoaded(target)) {
+                lastTransformFailure = TransformFailure.TARGET_NOT_LOADED;
+                DebugLog.info("Respawner at {} will not transform yet: target {} is not loaded",
+                        worldPosition, target);
+                return false;
             }
-            UniversalBossRespawner.LOGGER.warn(
-                    "Respawner at {} cannot place its target block at the home anchor {} because that cell "
-                            + "is occupied by {}; leave the cage in place and clear/loot it first",
-                    worldPosition, homePos, anchorState);
-            return false;
+            if (!isReplaceableOrEmptyChest(level, target)) {
+                lastTransformFailure = TransformFailure.TARGET_OCCUPIED;
+                UniversalBossRespawner.LOGGER.warn(
+                        "Respawner at {} cannot place its target block at {} because that cell is occupied "
+                                + "by {}; leave the cage in place and clear it first",
+                        worldPosition, target, level.getBlockState(target));
+                return false;
+            }
         }
         return true;
+    }
+
+    /** Air, replaceable, or an empty chest (a Twilight Forest death chest that can be cleared). */
+    private static boolean isReplaceableOrEmptyChest(Level level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        if (state.isAir() || state.canBeReplaced()) {
+            return true;
+        }
+        return state.getBlock() instanceof ChestBlock
+                && level.getBlockEntity(pos) instanceof Container container
+                && container.isEmpty();
+    }
+
+    /** The cell the transform target will occupy: the anchor plus {@link #spawnerOffset}. */
+    private BlockPos transformTargetPos() {
+        if (!transformAtAnchor || homePos == null) {
+            return worldPosition;
+        }
+        return homePos.offset(spawnerOffset[0], spawnerOffset[1], spawnerOffset[2]);
+    }
+
+    public TransformFailure getLastTransformFailure() {
+        return lastTransformFailure;
     }
 
     /** @return the resolved target block, or {@code null} when the id is malformed or not installed */
@@ -314,41 +381,37 @@ public class BossRespawnerBlockEntity extends BlockEntity {
             return false;
         }
 
-        BlockPos targetPos = pos;
-        if (transformAtAnchor) {
-            if (!hasHomeAnchor()) {
+        BlockPos targetPos = transformTargetPos();
+        if (!targetPos.equals(pos)) {
+            // The home cell must be clear even when the target is above it: Twilight Forest's Lich spawner
+            // descends through the home cell and stops only on a non-air block below it.
+            if (transformAtAnchor && hasHomeAnchor()
+                    && !homePos.equals(pos) && !homePos.equals(targetPos)) {
+                if (!level.isLoaded(homePos) || !isReplaceableOrEmptyChest(level, homePos)) {
+                    UniversalBossRespawner.LOGGER.warn(
+                            "Respawner at {} could not transform: home anchor {} is not available; "
+                                    + "resetting the cage", pos, homePos);
+                    resetToUnlit(level, pos);
+                    return false;
+                }
+                if (level.getBlockState(homePos).getBlock() instanceof ChestBlock) {
+                    // The loot was already taken; clear the empty chest so the spawner can descend through.
+                    level.setBlock(homePos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
+                }
+            }
+            if (!level.isLoaded(targetPos) || !isReplaceableOrEmptyChest(level, targetPos)) {
                 UniversalBossRespawner.LOGGER.warn(
-                        "Respawner at {} could not transform: no home anchor; resetting the cage", pos);
+                        "Respawner at {} could not transform: target {} is not available; resetting the cage",
+                        pos, targetPos);
                 resetToUnlit(level, pos);
                 return false;
             }
-            targetPos = homePos;
-            if (!targetPos.equals(pos)) {
-                if (!level.isLoaded(targetPos)) {
-                    UniversalBossRespawner.LOGGER.warn(
-                            "Respawner at {} could not transform: home anchor {} is not loaded; resetting "
-                                    + "the cage", pos, targetPos);
-                    resetToUnlit(level, pos);
-                    return false;
-                }
-                BlockState anchorState = level.getBlockState(targetPos);
-                boolean emptyChest = anchorState.getBlock() instanceof ChestBlock
-                        && level.getBlockEntity(targetPos) instanceof Container container
-                        && container.isEmpty();
-                if (!anchorState.isAir() && !anchorState.canBeReplaced() && !emptyChest) {
-                    UniversalBossRespawner.LOGGER.warn(
-                            "Respawner at {} could not transform: home anchor {} is occupied by {}; "
-                                    + "resetting the cage", pos, targetPos, anchorState);
-                    resetToUnlit(level, pos);
-                    return false;
-                }
-                if (emptyChest) {
-                    // The loot was already taken; clear the empty chest so the spawner can take its cell.
-                    level.setBlock(targetPos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
-                }
-                // The cage is a marker beside the anchor, not the spawner itself.
-                level.setBlock(pos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
+            if (level.getBlockState(targetPos).getBlock() instanceof ChestBlock) {
+                // The loot was already taken; clear the empty chest so the spawner can take its cell.
+                level.setBlock(targetPos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
             }
+            // The cage is a marker beside the anchor, not the spawner itself.
+            level.setBlock(pos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
         }
 
         DebugLog.info("Transforming respawner at {} into {} at {} for entity={}",
@@ -409,17 +472,22 @@ public class BossRespawnerBlockEntity extends BlockEntity {
      *                 is removed; when false the cage is replaced in place
      */
     public void setTransform(ResourceLocation block, CompoundTag nbt, int delayTicks, boolean allowPeaceful,
-                             boolean atAnchor) {
+                             int[] spawnerOffset, boolean atAnchor) {
         this.transformBlockId = block == null ? "" : block.toString();
         this.transformNbt = nbt == null ? new CompoundTag() : nbt.copy();
         this.delayTicks = Math.max(0, delayTicks);
         this.allowPeaceful = allowPeaceful;
+        this.spawnerOffset = normalizeOffset(spawnerOffset);
         this.transformAtAnchor = atAnchor;
         setChanged();
     }
 
     public boolean isTransformAtAnchor() {
         return transformAtAnchor;
+    }
+
+    public int[] getSpawnerOffset() {
+        return spawnerOffset.clone();
     }
 
     public String getTransformBlockId() {
@@ -728,6 +796,9 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                     ? rule.getCompound("TransformNbt").copy()
                     : new CompoundTag();
             this.transformAtAnchor = rule.getBoolean("AtAnchor");
+            this.spawnerOffset = rule.contains("SpawnerOffset", net.minecraft.nbt.Tag.TAG_INT_ARRAY)
+                    ? normalizeOffset(rule.getIntArray("SpawnerOffset"))
+                    : new int[]{0, 0, 0};
         }
 
         this.litTicks = tag.getInt(TAG_LIT_TICKS);
@@ -786,6 +857,7 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         if (!transformBlockId.isEmpty()) {
             rule.putString("TransformBlock", transformBlockId);
             rule.putBoolean("AtAnchor", transformAtAnchor);
+            rule.putIntArray("SpawnerOffset", spawnerOffset);
             if (!transformNbt.isEmpty()) {
                 rule.put("TransformNbt", transformNbt.copy());
             }

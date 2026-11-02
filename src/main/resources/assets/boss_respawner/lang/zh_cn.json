@@ -28,5 +28,7 @@
 
   "config.jade.plugin_boss_respawner.cage_contents": "重生笼内容",
 
-  "boss_respawner.message.respawn_failed": "Boss重生笼在多次尝试后仍无法召唤生物，已重置。"
+  "boss_respawner.message.respawn_failed": "Boss重生笼在多次尝试后仍无法召唤生物，已重置。",
+  "boss_respawner.message.anchor_occupied": "无法复活Boss，请先清空奖励箱中的物品。",
+  "boss_respawner.message.target_occupied": "重生笼的目标位置被方块占据，请先清空该位置。"
 }
