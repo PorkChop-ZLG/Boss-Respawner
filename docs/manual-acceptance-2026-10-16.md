@@ -5,6 +5,13 @@
 **配套测试数据包：** [`docs/examples/acceptance-datapack/`](examples/acceptance-datapack/)
 **覆盖来源：** 执行文档「三、测试与验收标准 → 行为验收」全部 21 条，加上实现特有的若干条
 
+> **2026-11-02 更新：** 暮色森林的 9 条规则已改用 `placement.mode: "twilightforest"`：不直接放笼，
+> 而是等 Boss 被移除、奖励箱生成后，把笼子放在 Boss 的 `HomePos` 旁边；8 个主线 Boss 的
+> `spawn.transform` 使用 `at: "anchor"`，由暮色森林自己的刷怪笼复活。本清单中涉及
+> `place_delay_ticks`、`home` 模式或“笼子压在箱子上”的旧描述只适用于当时的版本；新行为以
+> [README 的 `twilightforest` 模式章节](../README.md) 和
+> [2026-11-02 设计文档](plans/2026-11-02-twilightforest-placement-mode-design.md) 为准。
+
 ---
 
 ## 0. 准备

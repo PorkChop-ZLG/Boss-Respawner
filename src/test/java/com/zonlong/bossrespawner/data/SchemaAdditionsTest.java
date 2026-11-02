@@ -59,7 +59,7 @@ class SchemaAdditionsTest {
     }
 
     @Test
-    @DisplayName("a transform rule parses into its own object with its four fields")
+    @DisplayName("a transform rule parses into its own object with its five fields")
     void transformRuleParses() {
         RespawnEntry entry = parseOrFail("{}", """
                 {
@@ -80,6 +80,50 @@ class SchemaAdditionsTest {
         assertEquals(20, rule.delayTicks());
         assertTrue(rule.allowPeaceful());
         assertEquals("{Foo:1}", rule.nbt());
+        assertEquals(RespawnEntry.PlaceAt.CAGE, rule.at(), "at defaults to cage for old rules");
+    }
+
+    @Test
+    @DisplayName("transform.at accepts anchor and defaults to cage")
+    void transformAtIsParsed() {
+        assertEquals(RespawnEntry.PlaceAt.ANCHOR, parseOrFail("{}", """
+                {
+                  "mode": "transform",
+                  "transform": {
+                    "transform_block": "twilightforest:knight_phantom_boss_spawner",
+                    "at": "anchor"
+                  }
+                }
+                """).spawn().transform().at());
+
+        // An unknown value falls back to cage instead of silently deleting the rule.
+        assertEquals(RespawnEntry.PlaceAt.CAGE, parseOrFail("{}", """
+                {
+                  "mode": "transform",
+                  "transform": {
+                    "transform_block": "twilightforest:knight_phantom_boss_spawner",
+                    "at": "somewhere"
+                  }
+                }
+                """).spawn().transform().at());
+    }
+
+    @Test
+    @DisplayName("transform.at survives the rule snapshot")
+    void transformAtSurvivesSnapshot() {
+        RespawnEntry entry = parseOrFail("{}", """
+                {
+                  "mode": "transform",
+                  "transform": {
+                    "transform_block": "twilightforest:knight_phantom_boss_spawner",
+                    "at": "anchor"
+                  }
+                }
+                """);
+
+        RespawnRuleSnapshot restored = RespawnRuleSnapshot.fromTag(RespawnRuleSnapshot.of(entry).toTag());
+
+        assertEquals(RespawnEntry.PlaceAt.ANCHOR, restored.spawn().transform().at());
     }
 
     @Test
@@ -128,6 +172,7 @@ class SchemaAdditionsTest {
         assertEquals(20, entry.spawn().transform().delayTicks());
         assertFalse(entry.spawn().transform().allowPeaceful());
         assertEquals("", entry.spawn().transform().nbt());
+        assertEquals(RespawnEntry.PlaceAt.CAGE, entry.spawn().transform().at());
     }
 
     // ------------------------------------------------------------------ place_delay_ticks
@@ -206,20 +251,42 @@ class SchemaAdditionsTest {
                 "the mod's own spawner reproduces all six knights, their numbering and their loot");
         assertEquals(20, transform.get("delay_ticks").getAsInt(),
                 "the cage must play its opening animation before handing over");
+        assertEquals("anchor", transform.get("at").getAsString(),
+                "the spawner must be placed at the boss's home, not at the cage beside the chest");
     }
 
     @Test
-    @DisplayName("Twilight Forest cages wait out the death animation before placing")
-    void twilightForestRulesDelayPlacement() throws IOException {
-        // Twilight Forest drops boss loot into a chest once the death animation finishes (20 ticks, 88 for
-        // the Phantom Knight). A cage that arrives first can be refused because of that chest - which is
-        // what stopped the Minoshroom cage from appearing at all.
+    @DisplayName("Twilight Forest entries use the twilightforest placement mode and native spawners")
+    void twilightForestRulesUseTwilightforestMode() throws IOException {
+        // Twilight Forest drops boss loot into a chest when the boss is removed. The dedicated mode waits
+        // for that removal and places the cage beside the boss's own HomePos, so the chest keeps its open
+        // top and the boss's home does not move between cycles.
         for (String boss : new String[]{"naga", "lich", "minoshroom", "hydra", "knight_phantom", "ur_ghast",
                 "alpha_yeti", "snow_queen", "quest_ram"}) {
-            JsonObject placement = builtin("twilightforest", boss)
-                    .getAsJsonObject("placement").getAsJsonObject("home");
-            assertTrue(placement.get("place_delay_ticks").getAsInt() > 0,
-                    boss + " must wait for the death animation and its loot chest");
+            JsonObject json = builtin("twilightforest", boss);
+            JsonObject placement = json.getAsJsonObject("placement");
+            assertEquals("twilightforest", placement.get("mode").getAsString(),
+                    boss + ": placement.mode");
+            JsonObject modeObject = placement.getAsJsonObject("twilightforest");
+            assertTrue(modeObject.has("offset"), boss + ": placement.twilightforest.offset");
+            assertEquals(0, modeObject.get("place_delay_ticks").getAsInt(),
+                    boss + ": the removal wait replaces the old per-boss delay guess");
+            assertFalse(modeObject.get("search_failure_fallback").getAsBoolean(),
+                    boss + ": a failed search must not force the cage over the chest");
+
+            JsonObject spawn = json.getAsJsonObject("spawn");
+            if ("quest_ram".equals(boss)) {
+                // The Quest Ram has no boss spawner block; it keeps the summon path.
+                assertEquals("summon", spawn.get("mode").getAsString(), boss + ": spawn.mode");
+            } else {
+                assertEquals("transform", spawn.get("mode").getAsString(), boss + ": spawn.mode");
+                assertEquals(boss + "_boss_spawner",
+                        spawn.getAsJsonObject("transform").get("transform_block").getAsString()
+                                .replace("twilightforest:", ""),
+                        boss + ": must use its native boss spawner");
+                assertEquals("anchor", spawn.getAsJsonObject("transform").get("at").getAsString(),
+                        boss + ": the spawner belongs at the home anchor");
+            }
         }
     }
 

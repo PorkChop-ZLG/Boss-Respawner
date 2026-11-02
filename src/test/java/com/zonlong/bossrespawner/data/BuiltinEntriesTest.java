@@ -46,6 +46,12 @@ class BuiltinEntriesTest {
         }
     }
 
+    /** The selected placement mode object: {@code placement.home} or {@code placement.twilightforest}. */
+    private static JsonObject placementModeObject(Loaded loaded) {
+        JsonObject placement = loaded.json().getAsJsonObject("placement");
+        return placement.getAsJsonObject(placement.get("mode").getAsString());
+    }
+
     private static List<Path> entryFiles() throws IOException {
         assertTrue(Files.isDirectory(ENTRIES_ROOT),
                 "expected the data pack root at " + ENTRIES_ROOT.toAbsolutePath()
@@ -84,16 +90,21 @@ class BuiltinEntriesTest {
     }
 
     @Test
-    @DisplayName("every built-in entry is schema_version 4 and uses placement.mode home")
+    @DisplayName("every built-in entry is schema_version 4 and selects a supported placement mode")
     void schemaAndModeAreUniform() throws IOException {
         for (Loaded loaded : loadAll()) {
             JsonObject json = loaded.json();
             assertEquals(4, json.get("schema_version").getAsInt(), loaded.name() + ": schema_version");
-            assertEquals("home", json.getAsJsonObject("placement").get("mode").getAsString(),
-                    loaded.name() + ": placement.mode");
-            assertTrue(json.getAsJsonObject("placement").has("home"),
-                    loaded.name() + ": placement.home must exist");
-            assertEquals(RespawnEntry.PlacementMode.HOME, loaded.entry().placement().mode(),
+            JsonObject placement = json.getAsJsonObject("placement");
+            String mode = placement.get("mode").getAsString();
+            assertTrue(List.of("home", "twilightforest").contains(mode),
+                    loaded.name() + ": placement.mode " + mode);
+            assertTrue(placement.has(mode),
+                    loaded.name() + ": placement." + mode + " must exist");
+            RespawnEntry.PlacementMode expected = "twilightforest".equals(mode)
+                    ? RespawnEntry.PlacementMode.TWILIGHTFOREST
+                    : RespawnEntry.PlacementMode.HOME;
+            assertEquals(expected, loaded.entry().placement().mode(),
                     loaded.name() + ": resolved mode");
         }
     }
@@ -143,11 +154,14 @@ class BuiltinEntriesTest {
                 assertTrue(json.getAsJsonObject("activation").has(key), name + ": activation." + key);
             }
 
-            JsonObject home = json.getAsJsonObject("placement").getAsJsonObject("home");
+            JsonObject placement = json.getAsJsonObject("placement");
+            String placementMode = placement.get("mode").getAsString();
+            JsonObject modeObject = placement.getAsJsonObject(placementMode);
             for (String key : List.of("offset", "force_place", "search_failure_fallback", "search_down",
                     "search_up", "horizontal_radius", "require_ground", "avoid_fluids",
                     "avoid_blocks", "place_delay_ticks")) {
-                assertTrue(home.has(key), name + ": placement.home." + key + " must be explicit");
+                assertTrue(modeObject.has(key), name + ": placement." + placementMode + "." + key
+                        + " must be explicit");
             }
 
             for (String key : List.of("player_kill_only", "dimensions", "biomes")) {
@@ -162,8 +176,9 @@ class BuiltinEntriesTest {
                     name + ": spawn." + spawnModeKey + " must be an object");
             JsonObject spawnFields = spawn.getAsJsonObject(spawnModeKey);
             List<String> spawnKeys = "transform".equals(spawnMode)
-                    // Only what a hand-off can use: one block, an animation delay, the Peaceful gate and NBT.
-                    ? List.of("transform_block", "delay_ticks", "allow_peaceful", "nbt")
+                    // Only what a hand-off can use: one block, an animation delay, the Peaceful gate, NBT
+                    // and where the block is placed (cage or home anchor).
+                    ? List.of("transform_block", "delay_ticks", "allow_peaceful", "nbt", "at")
                     : List.of("delay_ticks", "require_player_nearby", "player_range", "allow_peaceful",
                     "count", "spawn_offset", "nbt", "finalize_spawn", "max_attempts", "retry_interval_ticks");
             for (String key : spawnKeys) {
@@ -179,14 +194,23 @@ class BuiltinEntriesTest {
     @DisplayName("the new placement fields carry the documented defaults")
     void newPlacementFieldsUseDefaults() throws IOException {
         for (Loaded loaded : loadAll()) {
-            JsonObject home = loaded.json().getAsJsonObject("placement").getAsJsonObject("home");
-            assertFalse(home.get("force_place").getAsBoolean(), loaded.name() + ": force_place");
-            assertTrue(home.get("search_failure_fallback").getAsBoolean(),
-                    loaded.name() + ": search_failure_fallback");
+            JsonObject modeObject = placementModeObject(loaded);
+            boolean twilightForest = loaded.entry().placement().mode() == RespawnEntry.PlacementMode.TWILIGHTFOREST;
+            assertFalse(modeObject.get("force_place").getAsBoolean(), loaded.name() + ": force_place");
+            if (twilightForest) {
+                // The Twilight Forest mode must never force a cage over whatever occupies the chosen cell;
+                // its offset already puts the cage beside the death chest, and a missing free cell is
+                // reported instead of overwriting the chest.
+                assertFalse(modeObject.get("search_failure_fallback").getAsBoolean(),
+                        loaded.name() + ": twilightforest search_failure_fallback");
+            } else {
+                assertTrue(modeObject.get("search_failure_fallback").getAsBoolean(),
+                        loaded.name() + ": search_failure_fallback");
+            }
             // The old global foreignCageBlockIds avoidance was migrated into every rule explicitly, and in v4
             // avoid_blocks is the ONLY block list there is, so an empty one would silently drop the avoidance
             // of another mod's respawner block.
-            assertTrue(stringArray(home, "avoid_blocks").contains("cataclysm:boss_respawner"),
+            assertTrue(stringArray(modeObject, "avoid_blocks").contains("cataclysm:boss_respawner"),
                     loaded.name() + ": the migrated avoidance of cataclysm:boss_respawner must survive in "
                             + "avoid_blocks, which is now the only block list");
         }
@@ -219,14 +243,16 @@ class BuiltinEntriesTest {
                 continue;
             }
             checked++;
-            JsonObject home = loaded.json().getAsJsonObject("placement").getAsJsonObject("home");
+            assertEquals(RespawnEntry.PlacementMode.TWILIGHTFOREST, loaded.entry().placement().mode(),
+                    loaded.name() + ": resolved mode");
+            JsonObject modeObject = placementModeObject(loaded);
 
             List<String> missingFromAvoid = twilightForestChests.stream()
-                    .filter(id -> !stringArray(home, "avoid_blocks").contains(id)).toList();
+                    .filter(id -> !stringArray(modeObject, "avoid_blocks").contains(id)).toList();
             assertTrue(missingFromAvoid.isEmpty(),
                     loaded.name() + ": avoid_blocks is missing " + missingFromAvoid);
 
-            assertTrue(stringArray(home, "avoid_blocks").contains("cataclysm:boss_respawner"),
+            assertTrue(stringArray(modeObject, "avoid_blocks").contains("cataclysm:boss_respawner"),
                     loaded.name() + ": the migrated Cataclysm avoidance entry must survive");
         }
         assertEquals(9, checked, "expected all nine Twilight Forest entries to be checked");
@@ -241,8 +267,8 @@ class BuiltinEntriesTest {
         // sizes catches both a bulk edit that flattens the lists and one that only half-applied them.
         int twilightForest = 0;
         for (Loaded loaded : loadAll()) {
-            JsonObject home = loaded.json().getAsJsonObject("placement").getAsJsonObject("home");
-            int size = stringArray(home, "avoid_blocks").size();
+            JsonObject modeObject = placementModeObject(loaded);
+            int size = stringArray(modeObject, "avoid_blocks").size();
             if (loaded.file().toString().contains("twilightforest")) {
                 twilightForest++;
                 assertEquals(18, size,
@@ -250,7 +276,7 @@ class BuiltinEntriesTest {
             } else {
                 assertEquals(1, size,
                         loaded.name() + ": only the migrated cataclysm:boss_respawner avoidance is expected");
-                assertEquals("cataclysm:boss_respawner", stringArray(home, "avoid_blocks").get(0),
+                assertEquals("cataclysm:boss_respawner", stringArray(modeObject, "avoid_blocks").get(0),
                         loaded.name() + ": the single avoided id must be the Cataclysm respawner block");
             }
         }
@@ -290,6 +316,17 @@ class BuiltinEntriesTest {
                 .filter(l -> "allow_multiple".equals(l.entry().duplicate().mode())).count();
         assertEquals(6, keepExisting, "entries using keep_existing");
         assertEquals(12, allowMultiple, "entries using allow_multiple");
+    }
+
+    @Test
+    @DisplayName("no built-in entry keeps a temporary hand-tuned activation amount")
+    void activationAmountsAreDefault() throws IOException {
+        // Naga and Lich were temporarily set to 64 / 100 while the Jade amount display was being tested.
+        // Those were test fixtures, not content; every shipped entry must be back at the documented default.
+        for (Loaded loaded : loadAll()) {
+            assertEquals(1, loaded.entry().activation().amount(),
+                    loaded.name() + ": activation.amount must be the default 1");
+        }
     }
 
     @Test
@@ -343,7 +380,7 @@ class BuiltinEntriesTest {
     @DisplayName("parser values match the raw JSON, field by field")
     void parsedValuesMatchRawJson() throws IOException {
         for (Loaded loaded : loadAll()) {
-            JsonObject home = loaded.json().getAsJsonObject("placement").getAsJsonObject("home");
+            JsonObject home = placementModeObject(loaded);
             RespawnEntry.PlacementRule placement = loaded.entry().placement();
             String name = loaded.name();
 
@@ -380,6 +417,8 @@ class BuiltinEntriesTest {
                 assertEquals(transform.get("delay_ticks").getAsInt(), rule.transform().delayTicks(), name);
                 assertEquals(transform.get("allow_peaceful").getAsBoolean(),
                         rule.transform().allowPeaceful(), name);
+                assertEquals(RespawnEntry.PlaceAt.valueOf(transform.get("at").getAsString().toUpperCase()),
+                        rule.transform().at(), name + ": transform.at");
                 assertTrue(rule.summon() == null, name + ": a transform rule must not carry a summon object");
             } else {
                 JsonObject summon = spawn.getAsJsonObject("summon");

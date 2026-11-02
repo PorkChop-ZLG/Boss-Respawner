@@ -5,17 +5,21 @@ import com.zonlong.bossrespawner.data.BossHomeSavedData;
 import com.zonlong.bossrespawner.data.PendingPlacementTask;
 import com.zonlong.bossrespawner.placement.RespawnCagePlacer;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -53,6 +57,54 @@ public final class PendingPlacementService {
     }
 
     private PendingPlacementService() {
+    }
+
+    /**
+     * Marks a Twilight Forest settlement task ready as soon as its source entity is removed.
+     *
+     * <p>This is deliberately an event rather than only a per-tick presence check: if the death chunk is
+     * unloaded before the task gets its next look, the entity is gone from the level and the presence check
+     * could mistake "chunk unloaded" for "still dying" forever. The removal event carries the reason, and
+     * {@code KILLED} means Twilight Forest's chest has already been deposited (it happens earlier in the
+     * same {@code remove} call).
+     *
+     * <p>Re-enqueuing the task without the wait fields keeps the existing target key and chunk index; the
+     * ordinary placement path then decides when the target chunk is ready.
+     */
+    @SubscribeEvent
+    public static void onEntityLeaveLevel(EntityLeaveLevelEvent event) {
+        if (event.getLevel().isClientSide()) {
+            return;
+        }
+        Entity entity = event.getEntity();
+        if (entity.getRemovalReason() != Entity.RemovalReason.KILLED) {
+            return;
+        }
+        MinecraftServer server = event.getLevel().getServer();
+        if (server == null) {
+            return;
+        }
+        BossHomeSavedData data = BossHomeSavedData.get(server);
+        if (data.pendingCount() == 0) {
+            return;
+        }
+
+        // Collect first: re-enqueueing replaces the map value and would otherwise invalidate the view.
+        List<PendingPlacementTask> ready = new ArrayList<>();
+        for (PendingPlacementTask task : data.pendingView()) {
+            if (entity.getUUID().equals(task.waitForEntityUuid())) {
+                ready.add(task);
+            }
+        }
+        for (PendingPlacementTask task : ready) {
+            PendingPlacementTask settled = new PendingPlacementTask(
+                    task.targetDimension(), task.targetBase(), task.lastSourceEntityUuid(),
+                    task.entityType(), task.homeSnapshot(), task.ruleSnapshot(),
+                    task.createdGameTime(), task.notBeforeGameTime());
+            data.enqueuePendingPlacement(settled);
+            DebugLog.info("Source entity {} removed; Twilight Forest placement at {} is now ready",
+                    entity.getUUID(), task.targetBase());
+        }
     }
 
     /** Trigger only: no saved-data access and no world interaction. */
@@ -101,6 +153,9 @@ public final class PendingPlacementService {
         List<PendingPlacementTask> due = null;
         for (PendingPlacementTask task : data.pendingView()) {
             if (!task.isDue(now)) {
+                continue;
+            }
+            if (stillWaitingForRemoval(server, task)) {
                 continue;
             }
             ServerLevel level = server.getLevel(task.targetDimension());
@@ -164,6 +219,11 @@ public final class PendingPlacementService {
                         task.targetBase(), now, task.notBeforeGameTime());
                 continue;
             }
+            if (stillWaitingForRemoval(server, task)) {
+                DebugLog.info("Pending placement at {} is queued but its source entity still exists",
+                        task.targetBase());
+                continue;
+            }
             if (level != null && !level.isLoaded(task.targetBase())) {
                 // Loaded and unloaded again before this tick; the sweep will pick it up later.
                 DebugLog.info("Pending placement at {} is queued but its chunk is not loaded yet",
@@ -194,6 +254,10 @@ public final class PendingPlacementService {
                 stillWaiting++;
                 continue;
             }
+            if (stillWaitingForRemoval(server, task)) {
+                stillWaiting++;
+                continue;
+            }
             ServerLevel level = server.getLevel(task.targetDimension());
             if (level != null && !level.isLoaded(task.targetBase())) {
                 stillWaiting++;
@@ -206,6 +270,33 @@ public final class PendingPlacementService {
 
         DebugLog.info("Deferred placement sweep: total={} retried={} stillWaiting={}",
                 tasks.size(), retried, stillWaiting);
+    }
+
+    /**
+     * Whether a Twilight Forest settlement task is still waiting for its source entity to be removed.
+     *
+     * <p>Twilight Forest places the loot chest inside {@code Entity#remove(KILLED)}, before the entity is
+     * actually removed. Waiting for {@code !isPresent || isRemoved} therefore guarantees the chest exists.
+     * An unloaded death chunk means the death animation is frozen, so the task waits instead of forcing a
+     * chunk load.
+     */
+    private static boolean stillWaitingForRemoval(MinecraftServer server, PendingPlacementTask task) {
+        UUID waitFor = task.waitForEntityUuid();
+        ResourceKey<Level> dimension = task.deathDimension();
+        BlockPos deathPos = task.deathPos();
+        if (waitFor == null || dimension == null || deathPos == null) {
+            return false;
+        }
+        ServerLevel deathLevel = server.getLevel(dimension);
+        if (deathLevel == null) {
+            // The dimension is gone; the placer will fail and clean up the task.
+            return false;
+        }
+        if (!deathLevel.isLoaded(deathPos)) {
+            return true;
+        }
+        Entity entity = deathLevel.getEntity(waitFor);
+        return entity != null && !entity.isRemoved();
     }
 
     /** Runs one queued task and drops it unless it asked to stay queued. */

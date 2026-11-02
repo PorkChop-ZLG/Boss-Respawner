@@ -9,12 +9,15 @@
     "consume": true
   },
   "placement": {
-    "mode": "home",
-    "home": {
-      "offset": [0, 0, 0],
-      "place_delay_ticks": 100,
+    "mode": "twilightforest",
+    "twilightforest": {
+      "offset": [
+        1,
+        0,
+        0
+      ],
       "force_place": false,
-      "search_failure_fallback": true,
+      "search_failure_fallback": false,
       "search_down": 32,
       "search_up": 16,
       "horizontal_radius": 4,
@@ -39,7 +42,8 @@
         "twilightforest:transformation_trapped_chest",
         "twilightforest:twilight_oak_chest",
         "twilightforest:twilight_oak_trapped_chest"
-      ]
+      ],
+      "place_delay_ticks": 0
     }
   },
   "death": {
@@ -53,7 +57,8 @@
       "transform_block": "twilightforest:knight_phantom_boss_spawner",
       "delay_ticks": 20,
       "allow_peaceful": false,
-      "nbt": ""
+      "nbt": "",
+      "at": "anchor"
     }
   },
   "duplicate": {

@@ -193,9 +193,35 @@ class BossHomeSavedDataTest {
     }
 
     @Test
+    @DisplayName("a wait-for-removal task round-trips its death location and wait UUID")
+    void waitTaskSurvivesSaveAndLoad() {
+        RespawnRuleSnapshot rules = RespawnRuleSnapshot.of(defaultEntry());
+        HomeRecord snapshot = home(UUID.randomUUID(), new BlockPos(40, 70, 40));
+        BlockPos base = new BlockPos(41, 69, 43);
+        BlockPos deathPos = new BlockPos(800, 64, -200);
+        UUID source = UUID.randomUUID();
+
+        PendingPlacementTask wait = new PendingPlacementTask(
+                OVERWORLD, base, source, WARDEN, snapshot, rules, 1234L, 1234L,
+                source, NETHER, deathPos);
+
+        PendingPlacementTask restored = PendingPlacementTask.fromTag(wait.toTag());
+
+        assertTrue(restored.waitsForRemoval());
+        assertEquals(source, restored.waitForEntityUuid());
+        assertEquals(NETHER, restored.deathDimension());
+        assertEquals(deathPos, restored.deathPos());
+        assertEquals(base, restored.targetBase());
+
+        // Ordinary deferred placements have no wait and must stay immediately eligible.
+        PendingPlacementTask ordinary = task(OVERWORLD, base, source, snapshot, rules);
+        assertFalse(ordinary.waitsForRemoval());
+        assertFalse(PendingPlacementTask.fromTag(ordinary.toTag()).waitsForRemoval());
+    }
+
+    @Test
     @DisplayName("tasks de-duplicate on (targetDimension, targetBase) and report the displaced UUID")
-    void enqueueDeduplicatesByPlacementTarget() {
-        BossHomeSavedData data = new BossHomeSavedData();
+    void enqueueDeduplicatesByPlacementTarget() {        BossHomeSavedData data = new BossHomeSavedData();
         RespawnRuleSnapshot rules = RespawnRuleSnapshot.of(defaultEntry());
         HomeRecord snapshot = home(UUID.randomUUID(), BlockPos.ZERO);
         BlockPos base = new BlockPos(100, 64, 100);
@@ -391,6 +417,7 @@ class BossHomeSavedDataTest {
             assertEquals(e.block(), a.block());
             assertEquals(e.delayTicks(), a.delayTicks());
             assertEquals(e.allowPeaceful(), a.allowPeaceful());
+            assertEquals(e.at(), a.at(), "transform.at");
         }
     }
 }

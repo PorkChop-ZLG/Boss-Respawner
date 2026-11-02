@@ -171,6 +171,7 @@ public record RespawnRuleSnapshot(
             t.putInt("DelayTicks", transform.delayTicks());
             t.putBoolean("AllowPeaceful", transform.allowPeaceful());
             t.putString("Nbt", transform.nbt());
+            t.putString("At", transform.at().name());
             tag.put("Transform", t);
         }
         return tag;
@@ -186,11 +187,21 @@ public record RespawnRuleSnapshot(
 
         if (mode == RespawnEntry.SpawnMode.TRANSFORM) {
             CompoundTag t = requireCompound(tag, "Transform");
+            // Absent in snapshots written before transform.at existed; those cages replaced themselves.
+            RespawnEntry.PlaceAt at = RespawnEntry.PlaceAt.CAGE;
+            if (t.contains("At", Tag.TAG_STRING)) {
+                try {
+                    at = RespawnEntry.PlaceAt.valueOf(t.getString("At"));
+                } catch (IllegalArgumentException e) {
+                    throw new IllegalArgumentException("unknown transform.at in rule snapshot: " + e.getMessage(), e);
+                }
+            }
             return new RespawnEntry.SpawnRule(mode, null, new RespawnEntry.TransformRule(
                     BossHomeNbt.getResourceLocation(t, "Block"),
                     t.getInt("DelayTicks"),
                     t.getBoolean("AllowPeaceful"),
-                    t.getString("Nbt")));
+                    t.getString("Nbt"),
+                    at));
         }
 
         CompoundTag s = requireCompound(tag, "Summon");

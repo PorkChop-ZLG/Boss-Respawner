@@ -35,10 +35,6 @@ class JadeAmountDisplayTest {
     private static final Path PROVIDER = TestPaths.mainSources()
             .resolve("com/zonlong/bossrespawner/compat/jade/BossRespawnerJadeProvider.java");
 
-    /** The entry rules temporarily used to exercise single-stack and over-stack amounts by hand. */
-    private static final Path NAGA = TestPaths.dataPackRoot()
-            .resolve("twilightforest/boss_respawner/entries/naga.json");
-
     @Test
     @DisplayName("the icon never carries a count badge, so it cannot compete with the printed amount")
     void iconHoldsASingleItem() throws IOException {
@@ -80,18 +76,6 @@ class JadeAmountDisplayTest {
         String source = code();
         assertTrue(source.contains("required > 1 ? required : 0"),
                 "the amount helper must suppress the number for a single item");
-    }
-
-    @Test
-    @DisplayName("the two hand-tuning entries still exercise a normal and an over-stack amount")
-    void testEntriesCoverBothBranches() throws IOException {
-        // Naga is 64 (exactly one stack) and Lich is 100 (beyond one stack): together they cover the case
-        // that exposed the bug. These are deliberately temporary values, hence the light-touch check.
-        assertTrue(Files.readString(NAGA, StandardCharsets.UTF_8).contains("\"amount\": 64"),
-                "naga.json is the single-stack sample; expected amount 64");
-        Path lich = NAGA.resolveSibling("lich.json");
-        assertTrue(Files.readString(lich, StandardCharsets.UTF_8).contains("\"amount\": 100"),
-                "lich.json is the over-stack sample; expected amount 100");
     }
 
     /** The provider source with comments removed, so prose cannot satisfy or trip an assertion. */

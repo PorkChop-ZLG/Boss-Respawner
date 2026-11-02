@@ -76,7 +76,7 @@
 
 暮色森林的 BOSS 战利品**可能通过箱子发放**，而且它的结构（巫妖塔、迷宫、暗黑高塔、巨魔洞穴等）本身就遍布箱子。重生笼如果落在箱子位置，就会**直接顶掉箱子及其全部战利品**——而 `force_place` / `search_failure_fallback` 路径确实可能覆盖实心方块。
 
-因此暮色森林的 9 个条目把该模组的**所有 17 种箱子**写入 `placement.home.avoid_blocks`（连同迁移过来的 `cataclysm:boss_respawner`，每条共 18 项）。
+因此暮色森林的 9 个条目把该模组的**所有 17 种箱子**写入 `placement.twilightforest.avoid_blocks`（连同迁移过来的 `cataclysm:boss_respawner`，每条共 18 项）。9 条规则同时把 `search_failure_fallback` 设为 `false`，所以搜索失败时**宁可这一次不放，也不覆盖奖励箱**。
 
 > **⚠️ 本节在 schema v4 被改写。** v3 时代这些箱子写的是 `placement.home.protected_blocks`（一个"任何情况下都不得覆盖"的字段，并额外带一条全局 `compat.protectedBlockIds` 底线）。**v4 已把该字段与全局配置项一并删除**，因为"保护 + 搜索硬跳过"的叠加会造成 ABANDON：搜索把所有候选都当成受保护而跳过 → 无候选 → 兜底 → 写入前又被保护拒绝 → **笼子完全不出现**。实测就发生在米诺菇 / 雪怪首领 / 冰雪女王。完整推翻理由见 [Home 出生点模式设计 §5.5](home-respawn-design.md#55-avoid_blocks搜索第一趟强制避开以及为什么-v4-删除了-protected_blocks)。
 
@@ -132,7 +132,7 @@
 
 暮色森林的**部分结构也可能使用原版 `minecraft:chest`**。原版箱子不在上面这 17 个 ID 里，因此当前配置**不会**避开它们。
 
-若要堵住，正确做法是把 `minecraft:chest` 与 `minecraft:trapped_chest` 加进**每条相关规则**的 `placement.home.avoid_blocks`（v4 起没有"全局保护列表"这种东西：`compat.protectedBlockIds` 已随 `protected_blocks` 一并删除，而且任何保护语义都无法阻止 `force_place` / 兜底写入覆盖方块）。这一步尚未执行，等你确认。
+若要堵住，正确做法是把 `minecraft:chest` 与 `minecraft:trapped_chest` 加进**每条相关规则**的 `placement.twilightforest.avoid_blocks`（v4 起没有"全局保护列表"这种东西：`compat.protectedBlockIds` 已随 `protected_blocks` 一并删除，而且任何保护语义都无法阻止 `force_place` / 兜底写入覆盖方块）。**`twilightforest` 模式已经把 `search_failure_fallback` 设为 `false`，所以笼子不会再覆盖任何奖励箱**；这一步只是让搜索第一趟也主动绕开原版箱子，属于可选优化，尚未执行。
 ## 三、谜题羊（Quest Ram）的特殊说明
 
 谜题羊是本次唯一一个"不是战斗 BOSS"的条目，但它恰好最契合本模组的设计初衷：
@@ -199,7 +199,7 @@ quest_ram       -> （空战利品表，什么都不掉）
 
 ### 暮初恶魂（Ur-Ghast）
 
-生活在暗黑高塔顶部的封闭塔楼。内置条目使用 `mode: "home"` 锚定首次观察位置，避免玩家把它引出塔外后笼子出现在荒野。
+生活在暗黑高塔顶部的封闭塔楼。内置条目使用 `placement.mode: "twilightforest"` 锚定 Boss 自己的 `HomePos`，避免玩家把它引出塔外后笼子出现在荒野。
 
 ### 九头蛇（Hydra）
 
@@ -232,7 +232,7 @@ src/main/resources/data/twilightforest/boss_respawner/entries/
 └── quest_ram.json
 ```
 
-全部使用 `mode: "home"` + `activation.item = twilightforest:magic_map_focus`，并把本模组的 **17 种箱子**与 `cataclysm:boss_respawner` 一起写入 `avoid_blocks`（见第二节），其余字段沿用现有内置条目的完整模板写法。骨架（**v4 形态**，实际内置条目还含 `place_delay_ticks`）：
+全部使用 `placement.mode: "twilightforest"` + `activation.item = twilightforest:magic_map_focus`，并把本模组的 **17 种箱子**与 `cataclysm:boss_respawner` 一起写入 `placement.twilightforest.avoid_blocks`（见第二节），其余字段沿用现有内置条目的完整模板写法。8 个主线 Boss 的 `spawn` 是 `transform` + `at: "anchor"`，谜题羊没有刷怪笼，保持 `summon`。骨架（**v4 形态**，实际内置条目还含全部可选字段）：
 
 ```json
 {
@@ -242,11 +242,11 @@ src/main/resources/data/twilightforest/boss_respawner/entries/
   "entity": "twilightforest:naga",
   "activation": { "item": "twilightforest:magic_map_focus", "amount": 1, "consume": true },
   "placement": {
-    "mode": "home",
-    "home": {
-      "offset": [0, 0, 0],
+    "mode": "twilightforest",
+    "twilightforest": {
+      "offset": [1, 0, 0],
       "force_place": false,
-      "search_failure_fallback": true,
+      "search_failure_fallback": false,
       "search_down": 32,
       "search_up": 16,
       "horizontal_radius": 4,
@@ -272,16 +272,18 @@ src/main/resources/data/twilightforest/boss_respawner/entries/
         "twilightforest:twilight_oak_chest",
         "twilightforest:twilight_oak_trapped_chest"
       ],
-      "place_delay_ticks": 30
+      "place_delay_ticks": 0
     }
   },
   "death": { "player_kill_only": false, "dimensions": [], "biomes": [] },
   "spawn": {
-    "mode": "summon",
-    "summon": {
-      "delay_ticks": 20, "require_player_nearby": true, "player_range": 9.0, "allow_peaceful": false,
-      "count": 1, "spawn_offset": [0, 0, 0], "nbt": "", "finalize_spawn": true,
-      "max_attempts": 20, "retry_interval_ticks": 4
+    "mode": "transform",
+    "transform": {
+      "transform_block": "twilightforest:naga_boss_spawner",
+      "delay_ticks": 20,
+      "allow_peaceful": false,
+      "nbt": "",
+      "at": "anchor"
     }
   },
   "duplicate": { "mode": "allow_multiple", "search_radius": 16 }

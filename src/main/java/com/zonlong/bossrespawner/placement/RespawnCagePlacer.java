@@ -90,6 +90,15 @@ public final class RespawnCagePlacer {
 
         RespawnEntry.PlacementRule placement = entry.placement();
 
+        if (placement.mode() == RespawnEntry.PlacementMode.TWILIGHTFOREST) {
+            // Twilight Forest deaths are scheduled by TwilightSettlementService, which waits for the boss's
+            // removal (and therefore its loot chest) before calling back into this pipeline.
+            UniversalBossRespawner.LOGGER.warn(
+                    "Twilight Forest placement for {} reached tryPlace instead of the settlement service; "
+                            + "no cage placed", entityTypeId);
+            return Outcome.ABANDONED;
+        }
+
         ResourceKey<Level> targetDimension;
         BlockPos origin;
         HomeRecord homeSnapshot = null;
@@ -215,6 +224,22 @@ public final class RespawnCagePlacer {
         // what", so they overwrite whatever occupies the position - a loot chest, another mod's boss spawner,
         // even bedrock - and the replaced block's contents are gone rather than dropped. avoid_blocks is the
         // only way to steer the search away from a block, and both of these paths skip the search.
+        if (request.rules().placement().mode() == RespawnEntry.PlacementMode.TWILIGHTFOREST
+                && request.homeSnapshot() != null) {
+            BlockPos anchor = request.homeSnapshot().homePos();
+            if (chosen.equals(anchor) || chosen.equals(anchor.below())) {
+                // The cage must never occupy the boss's home cell (it is directly above the death chest)
+                // or the chest cell itself. The built-in rules already rely on require_ground to reject
+                // the former; this guard keeps a hand-written rule from reintroducing the chest-blocking
+                // failure even if it disables that check.
+                UniversalBossRespawner.LOGGER.warn(
+                        "Refusing to place the Twilight Forest cage for {} at {}: that cell is the boss's "
+                                + "home or the loot-chest cell",
+                        request.entityTypeId(), chosen);
+                return Outcome.ABANDONED;
+            }
+        }
+
         if (placement.forcePlace() || chosen.equals(request.base())) {
             DebugLog.info("Writing respawn cage for {} at {} without protection checks", request.entityTypeId(),
                     chosen);
@@ -334,7 +359,8 @@ public final class RespawnCagePlacer {
             // of summoning the entity. Its delay and allow_peaceful live in the transform object.
             RespawnEntry.TransformRule transform = spawn.transform();
             be.setTransform(transform.block(), parseNbt(transform.nbt()),
-                    transform.delayTicks(), transform.allowPeaceful());
+                    transform.delayTicks(), transform.allowPeaceful(),
+                    transform.at() == RespawnEntry.PlaceAt.ANCHOR);
         } else if (spawn.summon() != null) {
             RespawnEntry.SummonRule summon = spawn.summon();
             be.setSpawnerData(

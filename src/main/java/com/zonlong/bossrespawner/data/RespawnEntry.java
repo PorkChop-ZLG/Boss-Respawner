@@ -15,16 +15,16 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * One parsed {@code boss_respawner} JSON rule (schema v3).
+ * One parsed {@code boss_respawner} JSON rule (schema v4).
  *
  * <pre>
  * data/&lt;namespace&gt;/boss_respawner/entries/&lt;any-name&gt;.json
  * </pre>
  *
- * <p>Schema v3 requires {@code schema_version}, {@code entity}, {@code activation.item},
- * {@code placement.mode} with its mode object ({@code placement.death} or {@code placement.home}), and
- * {@code spawn.mode} with its mode object ({@code spawn.summon} or {@code spawn.transform}). Everything
- * else uses code defaults.
+ * <p>Schema v4 requires {@code schema_version}, {@code entity}, {@code activation.item},
+ * {@code placement.mode} with its mode object ({@code placement.death}, {@code placement.home} or
+ * {@code placement.twilightforest}), and {@code spawn.mode} with its mode object ({@code spawn.summon}
+ * or {@code spawn.transform}). Everything else uses code defaults.
  *
  * <p>Older layouts are rejected rather than silently reinterpreted, and the message names the real cause:
  * schema v1 put the placement fields directly under {@code placement}, and schema v2 put the spawn fields
@@ -70,7 +70,14 @@ public record RespawnEntry(
         /** Anchor to the position where the entity died. */
         DEATH,
         /** Anchor to the registered home position stored in {@code BossHomeSavedData}. */
-        HOME
+        HOME,
+        /**
+         * Twilight Forest bosses: the anchor comes from the boss's own {@code HomePos} NBT, the cage waits
+         * for the entity to be removed with {@link net.minecraft.world.entity.Entity.RemovalReason#KILLED}
+         * (by which point Twilight Forest has placed its loot chest), and the cage is placed <em>beside</em>
+         * the anchor rather than in the chest column.
+         */
+        TWILIGHTFOREST
     }
 
     public static Optional<RespawnEntry> fromJson(ResourceLocation id, JsonObject root) {
@@ -249,9 +256,9 @@ public record RespawnEntry(
     /**
      * Resolved placement settings for the selected {@link PlacementMode}.
      *
-     * <p>The nested JSON layout ({@code placement.death} / {@code placement.home}) is flattened here:
-     * the selected mode's object supplies every field below. Both mode objects share the same field set
-     * and the same defaults.
+     * <p>The nested JSON layout ({@code placement.death} / {@code placement.home} /
+     * {@code placement.twilightforest}) is flattened here: the selected mode's object supplies every field
+     * below. All three mode objects share the same field set and the same defaults.
      */
     public record PlacementRule(PlacementMode mode, int[] offset, boolean forcePlace,
                                 boolean searchFailureFallback, int searchDown, int searchUp,
@@ -277,7 +284,7 @@ public record RespawnEntry(
                 } else {
                     UniversalBossRespawner.LOGGER.warn(
                             "Respawn entry {} is missing the required placement.mode "
-                                    + "(expected \"death\" or \"home\"), skipping",
+                                    + "(expected \"death\", \"home\" or \"twilightforest\"), skipping",
                             entryId);
                 }
                 return Optional.empty();
@@ -286,17 +293,22 @@ public record RespawnEntry(
             PlacementMode mode = switch (modeName) {
                 case "death" -> PlacementMode.DEATH;
                 case "home" -> PlacementMode.HOME;
+                case "twilightforest" -> PlacementMode.TWILIGHTFOREST;
                 default -> null;
             };
             if (mode == null) {
                 UniversalBossRespawner.LOGGER.warn(
                         "Respawn entry {} has invalid placement.mode \"{}\" "
-                                + "(expected \"death\" or \"home\"), skipping",
+                                + "(expected \"death\", \"home\" or \"twilightforest\"), skipping",
                         entryId, modeName);
                 return Optional.empty();
             }
 
-            String modeKey = mode == PlacementMode.DEATH ? "death" : "home";
+            String modeKey = switch (mode) {
+                case DEATH -> "death";
+                case HOME -> "home";
+                case TWILIGHTFOREST -> "twilightforest";
+            };
             JsonElement modeElement = placementObj.get(modeKey);
             if (modeElement == null || !modeElement.isJsonObject()) {
                 UniversalBossRespawner.LOGGER.warn(
@@ -393,6 +405,22 @@ public record RespawnEntry(
     }
 
     /**
+     * Where a {@code spawn.mode: "transform"} target block is placed.
+     */
+    public enum PlaceAt {
+        /** Replace the cage at the cage's own position. The original behaviour. */
+        CAGE,
+        /**
+         * Remove the cage and place the target block at the cage's stored home anchor.
+         *
+         * <p>Twilight Forest needs this: the cage sits beside the boss's home (so the death chest keeps
+         * its open top), while the native boss spawner must be placed at the home itself. Letting the
+         * spawner take the cage's position would move the boss's home one block down on every cycle.
+         */
+        ANCHOR
+    }
+
+    /**
      * Resolved {@code spawn}: a mode plus the one object that belongs to it.
      *
      * <p>Unlike {@code placement}, the two mode objects do <em>not</em> share a field set — summoning an
@@ -474,10 +502,32 @@ public record RespawnEntry(
                         block,
                         Math.max(0, getInt(obj, "delay_ticks", 20)),
                         getBoolean(obj, "allow_peaceful", false),
-                        getString(obj, "nbt", ""))));
+                        getString(obj, "nbt", ""),
+                        parsePlaceAt(entryId, obj))));
             }
 
             return Optional.of(new SpawnRule(mode, SummonRule.fromJson(obj), null));
+        }
+
+        /**
+         * Parses the optional {@code transform.at} field.
+         *
+         * <p>Unknown values fall back to {@link PlaceAt#CAGE} with a warning rather than rejecting the whole
+         * rule: this field is additive, and a typo must not silently remove a boss from the pack.
+         */
+        private static PlaceAt parsePlaceAt(ResourceLocation entryId, JsonObject obj) {
+            String raw = getString(obj, "at", "cage");
+            return switch (raw) {
+                case "cage" -> PlaceAt.CAGE;
+                case "anchor" -> PlaceAt.ANCHOR;
+                default -> {
+                    UniversalBossRespawner.LOGGER.warn(
+                            "Respawn entry {} has invalid spawn.transform.at \"{}\" (expected \"cage\" or "
+                                    + "\"anchor\"); falling back to \"cage\"",
+                            entryId, raw);
+                    yield PlaceAt.CAGE;
+                }
+            };
         }
 
         /** Detects the schema v2 flat layout so the rejection message can name the real cause. */
@@ -521,11 +571,10 @@ public record RespawnEntry(
 
     /**
      * {@code spawn.transform}: keep the cage lit for {@code delayTicks} so its opening animation plays, then
-     * replace the cage with {@code block} and let that block produce the boss.
+     * hand the boss over to {@code block}.
      *
-     * <p>Only four fields, because most of the summon path has no meaning here: there is one block rather
-     * than a count of entities, it lands on the cage's own position rather than at an offset, and
-     * {@code setBlock} on that position cannot fail, so the attempt limits have nothing to govern.
+     * <p>Only five fields, because most of the summon path has no meaning here: there is one block rather
+     * than a count of entities, and the attempt limits have nothing to govern.
      *
      * @param block         the block to become; resolved again when the animation ends
      * @param delayTicks    how long the cage stays lit before the swap
@@ -534,8 +583,11 @@ public record RespawnEntry(
      *                      avoids stranding a block the player cannot remove
      * @param nbt           NBT written to the new block's block entity, exactly as the trailing tag of a
      *                      {@code /setblock} command would be. Empty leaves the block entity untouched
+     * @param at            where the target block is placed; {@link PlaceAt#CAGE} keeps the old in-place
+     *                      behaviour, {@link PlaceAt#ANCHOR} moves it to the cage's stored home anchor
      */
-    public record TransformRule(ResourceLocation block, int delayTicks, boolean allowPeaceful, String nbt) {
+    public record TransformRule(ResourceLocation block, int delayTicks, boolean allowPeaceful, String nbt,
+                                PlaceAt at) {
     }
 
     public record DuplicateRule(String mode, int searchRadius) {

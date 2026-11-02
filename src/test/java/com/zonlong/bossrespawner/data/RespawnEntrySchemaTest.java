@@ -129,6 +129,24 @@ class RespawnEntrySchemaTest {
     }
 
     @Test
+    @DisplayName("nested twilightforest placement parses and resolves mode TWILIGHTFOREST")
+    void twilightForestPlacementParses() {
+        RespawnEntry entry = parseOrFail(entryWith("""
+                {
+                  "mode": "twilightforest",
+                  "twilightforest": {
+                    "offset": [1, 0, 0],
+                    "require_ground": false
+                  }
+                }
+                """));
+
+        assertEquals(RespawnEntry.PlacementMode.TWILIGHTFOREST, entry.placement().mode());
+        assertArrayEquals(new int[]{1, 0, 0}, entry.placement().offset());
+        assertFalse(entry.placement().requireGround());
+    }
+
+    @Test
     @DisplayName("an empty mode object is valid and yields the documented defaults")
     void emptyModeObjectUsesDocumentedDefaults() {
         RespawnEntry home = parseOrFail(entryWith("""

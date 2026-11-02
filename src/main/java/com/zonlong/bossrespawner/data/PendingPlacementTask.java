@@ -33,7 +33,10 @@ public record PendingPlacementTask(
         @Nullable HomeRecord homeSnapshot,
         RespawnRuleSnapshot ruleSnapshot,
         long createdGameTime,
-        long notBeforeGameTime) {
+        long notBeforeGameTime,
+        @Nullable UUID waitForEntityUuid,
+        @Nullable ResourceKey<Level> deathDimension,
+        @Nullable BlockPos deathPos) {
 
     private static final String TAG_DIMENSION = "TargetDimension";
     private static final String TAG_BASE = "TargetBase";
@@ -43,6 +46,27 @@ public record PendingPlacementTask(
     private static final String TAG_RULES = "RuleSnapshot";
     private static final String TAG_CREATED = "CreatedGameTime";
     private static final String TAG_NOT_BEFORE = "NotBeforeGameTime";
+    private static final String TAG_WAIT_UUID = "WaitForEntityUuid";
+    private static final String TAG_DEATH_DIMENSION = "DeathDimension";
+    private static final String TAG_DEATH_POS = "DeathPos";
+
+    /**
+     * Backward-compatible constructor for tasks that do not wait for an entity's removal.
+     *
+     * <p>Used by ordinary deferred placements, whose target is known as soon as the death is processed.
+     */
+    public PendingPlacementTask(ResourceKey<Level> targetDimension, BlockPos targetBase,
+                                UUID lastSourceEntityUuid, ResourceLocation entityType,
+                                @Nullable HomeRecord homeSnapshot, RespawnRuleSnapshot ruleSnapshot,
+                                long createdGameTime, long notBeforeGameTime) {
+        this(targetDimension, targetBase, lastSourceEntityUuid, entityType, homeSnapshot, ruleSnapshot,
+                createdGameTime, notBeforeGameTime, null, null, null);
+    }
+
+    /** Whether this task must wait for the named entity to be removed before it may run. */
+    public boolean waitsForRemoval() {
+        return waitForEntityUuid != null;
+    }
 
     /** De-duplication key: one pending task per placement target. */
     public record Key(ResourceKey<Level> dimension, long basePos) {
@@ -83,6 +107,11 @@ public record PendingPlacementTask(
         tag.put(TAG_RULES, ruleSnapshot.toTag());
         tag.putLong(TAG_CREATED, createdGameTime);
         tag.putLong(TAG_NOT_BEFORE, notBeforeGameTime);
+        if (waitForEntityUuid != null && deathDimension != null && deathPos != null) {
+            tag.putUUID(TAG_WAIT_UUID, waitForEntityUuid);
+            BossHomeNbt.putDimension(tag, TAG_DEATH_DIMENSION, deathDimension);
+            BossHomeNbt.putBlockPos(tag, TAG_DEATH_POS, deathPos);
+        }
         return tag;
     }
 
@@ -105,6 +134,22 @@ public record PendingPlacementTask(
         // Written by schema v3 onwards. Tasks saved before that have no delay, so their creation time is
         // the correct stand-in and they stay immediately eligible.
         long notBefore = tag.contains(TAG_NOT_BEFORE, Tag.TAG_LONG) ? tag.getLong(TAG_NOT_BEFORE) : created;
+
+        UUID waitForEntity = null;
+        ResourceKey<Level> deathDimension = null;
+        BlockPos deathPos = null;
+        if (tag.hasUUID(TAG_WAIT_UUID)) {
+            // A wait task without its death location could never decide when it is ready, so treat the
+            // record as corrupt rather than silently dropping the wait.
+            if (!tag.contains(TAG_DEATH_DIMENSION, Tag.TAG_STRING)
+                    || !tag.contains(TAG_DEATH_POS, Tag.TAG_COMPOUND)) {
+                throw new IllegalArgumentException("pending task waits for an entity but has no death location");
+            }
+            waitForEntity = tag.getUUID(TAG_WAIT_UUID);
+            deathDimension = BossHomeNbt.getDimension(tag, TAG_DEATH_DIMENSION);
+            deathPos = BossHomeNbt.getBlockPos(tag, TAG_DEATH_POS);
+        }
+
         return new PendingPlacementTask(
                 BossHomeNbt.getDimension(tag, TAG_DIMENSION),
                 BossHomeNbt.getBlockPos(tag, TAG_BASE),
@@ -113,6 +158,9 @@ public record PendingPlacementTask(
                 home,
                 RespawnRuleSnapshot.fromTag(tag.getCompound(TAG_RULES)),
                 created,
-                notBefore);
+                notBefore,
+                waitForEntity,
+                deathDimension,
+                deathPos);
     }
 }

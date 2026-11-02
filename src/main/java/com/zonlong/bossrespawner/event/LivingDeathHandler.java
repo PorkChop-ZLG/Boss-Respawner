@@ -68,6 +68,14 @@ public final class LivingDeathHandler {
         if (DebugLog.isEnabled()) {
             DebugLog.info("Death conditions met; attempting to place respawn cage for entityId={} rule={}", entityId, entry.id());
         }
+
+        if (entry.placement().mode() == RespawnEntry.PlacementMode.TWILIGHTFOREST) {
+            // Twilight Forest bosses get their loot chest only when the entity is removed, so the cage is
+            // scheduled behind a wait-for-removal task instead of being placed from this death event.
+            TwilightSettlementService.schedule(serverLevel, entity, entry, entityId.toString());
+            return;
+        }
+
         try {
             RespawnCagePlacer.Outcome outcome =
                     RespawnCagePlacer.tryPlace(serverLevel, entity, entry, entityId.toString());
