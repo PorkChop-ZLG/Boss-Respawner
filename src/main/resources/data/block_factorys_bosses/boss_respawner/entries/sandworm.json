@@ -18,7 +18,7 @@
       "search_down": 32,
       "search_up": 16,
       "horizontal_radius": 4,
-      "require_ground": true,
+      "require_ground": false,
       "avoid_fluids": false,
       "avoid_blocks": ["cataclysm:boss_respawner"]
     }

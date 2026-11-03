@@ -5,6 +5,8 @@
 **模组信息：** modId **`block_factorys_bosses`** · 版本 `2.1.2` · Maven `curse.maven:bossesrise-1314084:8123167`
 **数据来源：** 依赖对应的官方 jar（`bossesrise-1314084-8123167.jar`）中的 `assets/block_factorys_bosses/lang/{zh_cn,en_us}.json`、`models/item/*.json`、`recipe/*.json` 与 `data/block_factorys_bosses/loot_table/**`
 
+> **2026-11-04 更新：** 实机测试确认首领崛起 5 个 Boss 需要允许悬空放置；5 条内置规则的 `placement.home.require_ground` 已全部改为 `false`。
+
 ---
 
 ## 〇、钥匙选取原则
@@ -115,7 +117,7 @@ entity.block_factorys_bosses.kraken = Nerakyss, The Kraken
 
 ### 斯洛克，巨型沙虫（Sandworm）
 
-沙虫在**沙漠地下**穿行，死亡位置常在地下沙层。因为是 `home` 模式（锚定首次出现的位置，而非死亡点），默认参数即可；不必为它加大 `search_up`。
+沙虫在**沙漠地下**穿行，死亡位置常在地下沙层。因为是 `home` 模式（锚定首次出现的位置，而非死亡点），默认参数即可；不必为它加大 `search_up`。5 条首领崛起规则统一 `require_ground: false`（2026-11-04 实测需要允许悬空）。
 
 ### 阿什洛德，炼狱飞龙（Infernal Dragon）
 
@@ -123,7 +125,7 @@ entity.block_factorys_bosses.kraken = Nerakyss, The Kraken
 
 ### Nerakyss，海怪（Kraken）
 
-水下 BOSS，竞技场在海底。内置条目保持 `require_ground: true`（海床是坚实方块）。若实测发现笼子难以放置，可单独为它设 `"require_ground": false`；`search_failure_fallback: true` 也能兜底。
+水下 BOSS，竞技场在海底。5 条首领崛起规则统一 `require_ground: false`（2026-11-04 实测需要允许悬空）；`search_failure_fallback: true` 仍保留兜底。
 
 ---
 
@@ -158,7 +160,7 @@ src/main/resources/data/block_factorys_bosses/boss_respawner/entries/
       "search_down": 32,
       "search_up": 16,
       "horizontal_radius": 4,
-      "require_ground": true,
+      "require_ground": false,
       "avoid_fluids": false,
       "avoid_blocks": ["cataclysm:boss_respawner"],
       "place_delay_ticks": 0

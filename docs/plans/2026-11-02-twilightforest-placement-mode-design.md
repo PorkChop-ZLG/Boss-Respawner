@@ -98,7 +98,7 @@ death → TF mode → 过滤克隆/非终局骑士 → 读 HomePos
 
 - 单元：`twilightforest` 模式解析、`transform.at` / `spawner_offset` / `force_place` 解析/快照、`PendingPlacementTask` 等待字段
   往返、`HomePos` / `MasterLich` NBT 契约、8 条主线 TF 内置 JSON + 谜题羊 `home` 的解析。
-- 构建：`gradlew.bat test`（当前 114 项全绿）。
+- 构建：`gradlew.bat test`（当前 115 项全绿）。
 - 实机（2026-11-03/04 已完成）：8 个 TF 主线 Boss + 谜题羊、四个联动模组全部验证；箱子可开/笼子在旁/激活后 Boss 正确生成/home 不漂移；幻影骑士只出 1 笼；巫妖克隆不触发；8 条主线允许悬空；巫妖的奖励箱替换、其余 7 条的奖励箱保留。日志复核见 `docs/reviews/2026-11-03-code-review-0.1.0-to-f1cb657.md`。
 
 ## 后续

@@ -376,7 +376,7 @@ Home 模式的出生点来自本模组自己的数据库（见下方“Home 来�
 | `search_down` | int | `32` | 从基准点向下搜索的最大格数，最小 `0` |
 | `search_up` | int | `16` | 从基准点向上搜索的最大格数，最小 `0` |
 | `horizontal_radius` | int | `4` | 垂直搜索失败后水平搜索的半径，最小 `0` |
-| `require_ground` | bool | `true` | 搜索时是否要求下方有可站立的完整方块。8 条暮色森林主线 Boss 设为 `false`，允许悬空放置（Ur-Ghast 的空中场地、被破坏的竞技场、蘑菇密集的米诺菇房间）；谜题羊的 `home` 配置保持 `true`。 |
+| `require_ground` | bool | `true` | 搜索时是否要求下方有可站立的完整方块。8 条暮色森林主线 Boss + 5 条首领崛起 Boss 设为 `false`，允许悬空放置（Ur-Ghast 的空中场地、被破坏的竞技场、蘑菇密集的米诺菇房间；2026-11-04 实测首领崛起也需要悬空）；谜题羊和其余 19 条保持 `true`。 |
 | `avoid_fluids` | bool | `false` | 搜索时是否避开流体 |
 | `avoid_blocks` | string[] | `[]` | **搜索第一趟强制避开**的方块 ID；第一趟无果时会忽略它再搜一遍，因此**避让永远不会导致放不出笼子** |
 
@@ -647,12 +647,12 @@ gradlew.bat runServer
 gradlew.bat runClient
 ```
 
-`gradlew.bat test` 运行的是不启动游戏的纯逻辑单元测试（当前 114 项），涵盖：
+`gradlew.bat test` 运行的是不启动游戏的纯逻辑单元测试（当前 115 项），涵盖：
 
 - schema v4 的解析与各类拒绝路径（含 v3 结构、v1 扁平 `placement`、v2 扁平 `spawn`、缺失 `mode`、缺失模式对象、非法模式、版本门），以及"残留的 `protected_blocks` 键不产生任何效果"；
 - `twilightforest` 放置模式、`spawn.transform.at` / `spawner_offset` / `force_place` 的解析/快照往返，以及 Twilight Forest `HomePos` / `MasterLich` 两个只读 NBT 契约；
 - `BossHomeSavedData` 的 NBT 往返、去重合并、区块索引、放置延迟、等待源实体移除的任务字段与 `dataVersion` 拒绝策略；
-- 全部 32 个内置 JSON 的真实解析验证、字段默认值与迁移后的 `avoid_blocks` 列表（9 个暮色条目——8 条 TF + 谜题羊——各 18 项、其余各 1 项），以及 8 条暮色森林主线 Boss 的 `twilightforest` 模式/`offset: [0,-1,1]`/`placement.force_place:true`/原生刷怪笼/`at: "anchor"`/`require_ground:false`/`spawn.transform.force_place:true`（巫妖 `spawner_offset:[0,-1,0]`，其余 7 条 `[0,0,0]`）、谜题羊的 `home` + `summon`；
+- 全部 32 个内置 JSON 的真实解析验证、字段默认值与迁移后的 `avoid_blocks` 列表（9 个暮色条目——8 条 TF + 谜题羊——各 18 项、其余各 1 项），以及 8 条暮色森林主线 Boss 的 `twilightforest` 模式/`offset: [0,-1,1]`/`placement.force_place:true`/原生刷怪笼/`at: "anchor"`/`require_ground:false`/`spawn.transform.force_place:true`（巫妖 `spawner_offset:[0,-1,0]`，其余 7 条 `[0,0,0]`）、谜题羊的 `home` + `summon`、5 条首领崛起的 `home` + `require_ground:false`；
 - 验收数据包（`docs/examples/acceptance-datapack`）的 6 条正向 / 4 条负向条目校验；
 - 语言文件键集一致性（含激活失败提示），以及对已删除全局配置项（含 `protectedBlockIds`）与已删除保护分支的源码引用检查、`PlacementResolver` 两趟搜索的接线检查。
 

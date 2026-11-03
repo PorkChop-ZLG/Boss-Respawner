@@ -37,4 +37,4 @@
 1. 新行为先改代码与测试，再同步 README 和“当前有效”文档；历史文档不要直接改写成新行为，必要时在顶部加历史说明。
 2. 涉及 `protected_blocks`、`Config.foreignCageBlockIds`、`Config.PROTECTED_BLOCK_IDS`、旧的“不可覆盖”底线时，先确认是否为历史叙述；当前只有 `avoid_blocks`，且它只是搜索偏好。
 3. 8 条暮色主线使用 `placement.force_place:true`；`search_failure_fallback:false` 是保留语义，不是运行时保护。`spawn.transform.force_place` 与放置 force 是两个阶段，改动时不要混用。
-4. 当前测试基线：`gradlew.bat test` **114 项**；构建产物 `build/libs/boss_respawner-0.1.0.jar`。
+4. 当前测试基线：`gradlew.bat test` **115 项**；构建产物 `build/libs/boss_respawner-0.1.0.jar`。

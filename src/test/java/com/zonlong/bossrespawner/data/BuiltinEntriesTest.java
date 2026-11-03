@@ -330,6 +330,21 @@ class BuiltinEntriesTest {
     }
 
     @Test
+    @DisplayName("all five Bosses Rise bosses allow air placement")
+    void bossesRiseAllowAirPlacement() throws IOException {
+        // 2026-11-04: in-game testing showed the Bosses Rise arenas often place the cage in air; all five
+        // built-in entries must keep require_ground=false unless a future test proves otherwise.
+        List<Loaded> bossesRise = loadAll().stream()
+                .filter(l -> l.file().toString().contains("block_factorys_bosses"))
+                .toList();
+        assertEquals(5, bossesRise.size(), "Bosses Rise entry count");
+        for (Loaded loaded : bossesRise) {
+            assertFalse(loaded.entry().placement().requireGround(),
+                    loaded.name() + ": require_ground must be false for Bosses Rise");
+        }
+    }
+
+    @Test
     @DisplayName("no built-in entry keeps a temporary hand-tuned activation amount")
     void activationAmountsAreDefault() throws IOException {
         // Naga and Lich were temporarily set to 64 / 100 while the Jade amount display was being tested.
