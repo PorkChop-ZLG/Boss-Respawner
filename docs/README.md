@@ -11,7 +11,7 @@
 | [plans/2026-11-02-twilightforest-placement-mode-design.md](plans/2026-11-02-twilightforest-placement-mode-design.md) | 暮色森林 B 方案最终设计（8 条 force、`[0,-1,1]`、巫妖 `[0,-1,0]`、其余 7 条 `[0,0,0]`） |
 | [plans/2026-11-02-twilightforest-mode-fix-plan.md](plans/2026-11-02-twilightforest-mode-fix-plan.md) | TF 修复迭代记录；**最终行为见第 14 节**，第 10-13 节保留为历史 |
 | [twilight-forest-mapping.md](twilight-forest-mapping.md) | 暮色森林 9 条规则的映射与箱子策略 |
-| [bosses-rise-mapping.md](bosses-rise-mapping.md) | 首领崛起 5 条规则的映射；原版箱子避让是明确接受的限制 |
+| [bosses-rise-mapping.md](bosses-rise-mapping.md) | 首领崛起 3 条已支持规则的映射；雪怪、海怪不兼容（`yeti.json` / `kraken.json` 已删除）；原版箱子避让是明确接受的限制 |
 | [legendary-monsters-eye-mapping.md](legendary-monsters-eye-mapping.md) | 传奇怪物钥匙/实体映射 |
 | [mowzies-mobs-mapping.md](mowzies-mobs-mapping.md) | Mowzie's Mobs 钥匙/实体映射 |
 | [manual-acceptance-2026-10-16.md](manual-acceptance-2026-10-16.md) | 人工验收清单；顶部有 2026-11-03/04 实机执行状态 |
@@ -37,4 +37,4 @@
 1. 新行为先改代码与测试，再同步 README 和“当前有效”文档；历史文档不要直接改写成新行为，必要时在顶部加历史说明。
 2. 涉及 `protected_blocks`、`Config.foreignCageBlockIds`、`Config.PROTECTED_BLOCK_IDS`、旧的“不可覆盖”底线时，先确认是否为历史叙述；当前只有 `avoid_blocks`，且它只是搜索偏好。
 3. 8 条暮色主线使用 `placement.force_place:true`；`search_failure_fallback:false` 是保留语义，不是运行时保护。`spawn.transform.force_place` 与放置 force 是两个阶段，改动时不要混用。
-4. 当前测试基线：`gradlew.bat test` **115 项**；构建产物 `build/libs/boss_respawner-0.1.0.jar`。
+4. 当前测试基线：`gradlew.bat test` **116 项**；构建产物 `build/libs/boss_respawner-0.1.0.jar`。

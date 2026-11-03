@@ -35,8 +35,8 @@ class BuiltinEntriesTest {
 
     private static final Path ENTRIES_ROOT = TestPaths.dataPackRoot();
 
-    /** The built-in entries shipped with the mod: 18 original + 5 Bosses Rise + 9 Twilight Forest. */
-    private static final int EXPECTED_ENTRY_COUNT = 32;
+    /** The built-in entries shipped with the mod: 18 original + 3 Bosses Rise + 9 Twilight Forest. */
+    private static final int EXPECTED_ENTRY_COUNT = 30;
 
     /** Namespaces that went through the schema v1 -> v2 migration, used by the fidelity checks below. */
     private static final List<String> MIGRATED_NAMESPACES = List.of("legendary_monsters", "mowziesmobs");
@@ -330,17 +330,31 @@ class BuiltinEntriesTest {
     }
 
     @Test
-    @DisplayName("all five Bosses Rise bosses allow air placement")
+    @DisplayName("all three supported Bosses Rise bosses allow air placement")
     void bossesRiseAllowAirPlacement() throws IOException {
-        // 2026-11-04: in-game testing showed the Bosses Rise arenas often place the cage in air; all five
-        // built-in entries must keep require_ground=false unless a future test proves otherwise.
+        // 2026-11-04: in-game testing showed the Bosses Rise arenas often place the cage in air; all three
+        // supported entries must keep require_ground=false unless a future test proves otherwise.
+        // Yeti and Kraken are intentionally excluded; see unsupportedBossesHaveNoEntry for why.
         List<Loaded> bossesRise = loadAll().stream()
                 .filter(l -> l.file().toString().contains("block_factorys_bosses"))
                 .toList();
-        assertEquals(5, bossesRise.size(), "Bosses Rise entry count");
+        assertEquals(3, bossesRise.size(), "supported Bosses Rise entry count");
         for (Loaded loaded : bossesRise) {
             assertFalse(loaded.entry().placement().requireGround(),
                     loaded.name() + ": require_ground must be false for Bosses Rise");
+        }
+    }
+
+    @Test
+    @DisplayName("unsupported Bosses Rise bosses have no built-in entry")
+    void unsupportedBossesHaveNoEntry() {
+        // Yeti: custom death uses discard(), never LivingDeathEvent.
+        // Kraken: the ship anchor/phase cannot be restored by a static cage offset; in-game testing
+        // showed the revived Kraken at the wrong position, so both entries stay deleted.
+        for (String name : List.of("yeti.json", "kraken.json")) {
+            assertFalse(Files.exists(ENTRIES_ROOT.resolve(
+                            "data/block_factorys_bosses/boss_respawner/entries/" + name)),
+                    name + " must stay deleted; that Bosses Rise boss is unsupported");
         }
     }
 
@@ -379,21 +393,20 @@ class BuiltinEntriesTest {
     }
 
     @Test
-    @DisplayName("every Bosses Rise and Twilight Forest boss has an entry")
+    @DisplayName("every supported Bosses Rise and Twilight Forest boss has an entry")
     void newModCoverageIsComplete() throws IOException {
         List<Loaded> loaded = loadAll();
         assertEquals(9, loaded.stream().filter(l -> l.file().toString().contains("twilightforest")).count(),
                 "8 progression bosses plus the Quest Ram");
-        assertEquals(5, loaded.stream().filter(l -> l.file().toString().contains("block_factorys_bosses")).count(),
-                "5 named bosses in Bosses Rise 2.1.2 (incl. Nerakyss, the Kraken)");
+        assertEquals(3, loaded.stream().filter(l -> l.file().toString().contains("block_factorys_bosses")).count(),
+                "3 supported named bosses in Bosses Rise (Yeti and Kraken are unsupported and have no JSON)");
 
         List<String> expected = new java.util.ArrayList<>(List.of(
                 "twilightforest:naga", "twilightforest:lich", "twilightforest:minoshroom",
                 "twilightforest:hydra", "twilightforest:knight_phantom", "twilightforest:ur_ghast",
                 "twilightforest:alpha_yeti", "twilightforest:snow_queen", "twilightforest:quest_ram",
                 "block_factorys_bosses:infernal_dragon", "block_factorys_bosses:sandworm",
-                "block_factorys_bosses:underworld_knight", "block_factorys_bosses:yeti",
-                "block_factorys_bosses:kraken"));
+                "block_factorys_bosses:underworld_knight"));
         List<String> actual = loaded.stream()
                 .map(l -> l.entry().entities().get(0).toString())
                 .filter(id -> id.startsWith("twilightforest:") || id.startsWith("block_factorys_bosses:"))
