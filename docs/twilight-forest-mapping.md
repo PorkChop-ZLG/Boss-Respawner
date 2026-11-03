@@ -207,7 +207,7 @@ quest_ram       -> （空战利品表，什么都不掉）
 
 ### 冰雪女王（Snow Queen）
 
-宫殿由冰/浮冰构成。8 条暮色主线规则统一 `require_ground: false`（允许悬空），`search_failure_fallback` 为 `false`（不覆盖奖励箱）。冰类方块仍满足 `isFaceSturdy(UP)`，但不再依赖这个判定。
+宫殿由冰/浮冰构成。8 条暮色主线规则统一 `require_ground: false`（允许悬空），并使用 `placement.force_place: true`，笼子直接放在 `HomePos+[0,-1,1]`；`search_failure_fallback: false` 只是保留语义，force 路径不读取它。笼子不压住奖励箱靠 TF 锚点硬守卫和 `[0,-1,1]` 偏移；巫妖的 `spawn.transform.force_place:true` 按设计替换 `HomePos.below()` 的奖励箱格。冰类方块仍满足 `isFaceSturdy(UP)`，但不再依赖这个判定。
 
 ### 娜迦（Naga）
 

@@ -12,7 +12,6 @@ public final class RespawnRuleManager {
     public static final RespawnRuleManager INSTANCE = new RespawnRuleManager();
 
     private Map<ResourceLocation, RespawnEntry> byEntity = Collections.emptyMap();
-    private Map<ResourceLocation, RespawnEntry> byId = Collections.emptyMap();
 
     private RespawnRuleManager() {
     }
@@ -34,12 +33,7 @@ public final class RespawnRuleManager {
         return Collections.unmodifiableMap(byEntity);
     }
 
-    public Map<ResourceLocation, RespawnEntry> getById() {
-        return Collections.unmodifiableMap(byId);
-    }
-
-    void replaceAll(Map<ResourceLocation, RespawnEntry> byEntity, Map<ResourceLocation, RespawnEntry> byId) {
+    void replaceAll(Map<ResourceLocation, RespawnEntry> byEntity) {
         this.byEntity = Collections.unmodifiableMap(new HashMap<>(byEntity));
-        this.byId = Collections.unmodifiableMap(new HashMap<>(byId));
     }
 }

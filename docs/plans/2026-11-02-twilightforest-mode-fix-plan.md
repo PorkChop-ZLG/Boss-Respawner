@@ -543,7 +543,7 @@ gradlew.bat build  → BUILD SUCCESSFUL
 
 ### 12.4 文档
 
-README、`docs/twilight-forest-mapping.md`、本计划、B 方案设计、人工验收清单均已改为“8 条全部 force、全部 `[0,-1,0]`、无 home 重设、无旧笼迁移”。
+> **历史记录（第 12 节）：** 当时曾把文档同步为“8 条全部 force、全部 `[0,-1,0]`、无 home 重设、无旧笼迁移”。第 13 节已把笼子偏移改为 `[0,-1,1]`；第 14 节最终定为巫妖 `spawner_offset:[0,-1,0]`、其余 7 条 `[0,0,0]`。README、TF mapping、B 方案设计已于 2026-11-04 同步最终版；人工验收清单的勾选仍待补全。
 
 ---
 

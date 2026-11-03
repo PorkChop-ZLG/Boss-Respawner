@@ -1,5 +1,7 @@
 # Universal Boss Respawner 代码审查问题报告（2026-09-06）
 
+> **历史文档（2026-11-04 标记）：** 本文是 2026-09-06 的审查，描述 v2/v3 时代；其中 `protected_blocks`、旧防护底线、旧 `Config` 名称均已删除。当前行为以 [README](../README.md)、[home-respawn-design](home-respawn-design.md) 和源码为准；新审查见 [2026-11-03 报告](reviews/2026-11-03-code-review-0.1.0-to-f1cb657.md)。
+
 **审查对象：** `D:\Minecraft\Boss-Respawner`  
 **审查方式：** 三路并行子代理代码审查  
 **审查范围：**

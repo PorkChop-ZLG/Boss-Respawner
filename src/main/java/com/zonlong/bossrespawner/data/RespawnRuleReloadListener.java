@@ -94,7 +94,7 @@ public class RespawnRuleReloadListener extends SimpleJsonResourceReloadListener 
             }
         }
 
-        manager.replaceAll(byEntity, byId);
+        manager.replaceAll(byEntity);
         UniversalBossRespawner.LOGGER.info("Loaded {} boss respawn entries ({} effective entity mappings)",
                 byId.size(), byEntity.size());
         DebugLog.info("Respawn rule reload finished: {} entries, {} entity mappings", byId.size(), byEntity.size());

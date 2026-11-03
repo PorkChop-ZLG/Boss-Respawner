@@ -71,7 +71,7 @@
 
 ### ⚠️ 仍有一个缺口：原版箱子
 
-它的结构（冥界竞技场地窖等）里仍有**原版箱子**。若要连这些也避开，需要把 `minecraft:chest` 与 `minecraft:trapped_chest` 加进每条规则的 `placement.home.avoid_blocks`（v4 起**没有**全局 `compat.protectedBlockIds` 这种东西，它已随 `protected_blocks` 字段一并删除；而且任何"保护"语义都无法阻止 `force_place` / 兜底写入覆盖方块）。这一步尚未执行，等你确认。
+它的结构（冥界竞技场地窖等）里仍有**原版箱子**。若要连这些也避开，需要把 `minecraft:chest` 与 `minecraft:trapped_chest` 加进每条规则的 `placement.home.avoid_blocks`（v4 起**没有**全局 `compat.protectedBlockIds` 这种东西，它已随 `protected_blocks` 字段一并删除；而且任何"保护"语义都无法阻止 `force_place` / 兜底写入覆盖方块）。**2026-11-04 明确决定：Critical 2 保持现状，这 5 条规则不额外避让原版箱子；搜索仍按两趟进行，最坏情况可能覆盖箱子。** 这是已接受的设计限制，不是待办项。
 ## 三、⚠️ 关于 BOSS 数量：4 个还是 5 个？
 
 设计讨论中按 **4 个 BOSS** 处理，但 `2.1.2` 的实体与语言文件里实际有 **5 个**命名 BOSS，第 5 个是：

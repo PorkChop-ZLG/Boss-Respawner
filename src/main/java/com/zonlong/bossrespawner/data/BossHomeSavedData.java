@@ -116,8 +116,10 @@ public class BossHomeSavedData extends SavedData {
     /**
      * True when the on-disk data is newer than this build understands. Such an instance refuses to be
      * written back, so the newer file survives intact.
+     *
+     * <p>Package-visible rather than public: production code only needs the mutators' readOnly guard.
      */
-    public boolean isReadOnly() {
+    boolean isReadOnly() {
         return readOnly;
     }
 

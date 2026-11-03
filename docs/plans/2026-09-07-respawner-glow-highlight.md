@@ -1,5 +1,7 @@
 # Boss 重生笼发光高亮显示 Implementation Plan
 
+> **状态（2026-11-04 标记）：** 该功能已实现并保留；本文是实现记录，不是待办计划。当前行为以 [README](../../README.md) 和源码为准。
+
 **Goal:** 为本模组 Boss 重生笼增加“原版实体发光描边式高亮”，使玩家在配置距离内可以透过方块看到重生笼；开关与距离配置在 common TOML 中，默认开启且距离 32 格。
 
 **Architecture:** 使用 NeoForge 1.21.1 已有的 BlockEntity 自定义描边钩子 `hasCustomOutlineRendering(Player)` + Minecraft 原版 `OutlineBufferSource`。当配置开启且玩家在距离内时，重生笼方块实体渲染器将重生笼模型通过 `OutlineBufferSource` 渲染，原版 outline 后处理管线生成白色发光描边并使其透过方块可见。

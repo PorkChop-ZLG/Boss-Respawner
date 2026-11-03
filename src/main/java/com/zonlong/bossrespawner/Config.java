@@ -14,7 +14,8 @@ public final class Config {
     public static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
     public static final ModConfigSpec.BooleanValue ENABLE_MOD = BUILDER
-            .comment("Master switch for the whole mod. Set false to disable all placement/spawning logic.")
+            .comment("Master switch for the whole mod. Set false to stop new placement/spawning logic.",
+                    "Already lit cages and queued placement tasks pause and resume when re-enabled.")
             .translation("boss_respawner.configuration.general.enableMod")
             .define("general.enableMod", true);
 

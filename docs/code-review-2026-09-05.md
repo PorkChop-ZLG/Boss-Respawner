@@ -1,5 +1,7 @@
 # Universal Boss Respawner 代码审查报告
 
+> **历史文档（2026-11-04 标记）：** 本文是 2026-09-05 的审查，描述 schema v2/v3 时代。当前为 schema v4，已支持 `death` / `home` / `twilightforest`；文中 `Config.foreignCageBlockIds`、`protected_blocks`、旧的扁平 `placement` 等均已删除。当前行为以 [README](../README.md)、[home-respawn-design](home-respawn-design.md) 和源码为准；新审查见 [2026-11-03 报告](reviews/2026-11-03-code-review-0.1.0-to-f1cb657.md)。
+
 **审查日期：** 2026-09-05  
 **审查类型：** 只读代码审查（未修改任何文件）  
 **审查对象：** `D:\Minecraft\Boss-Respawner`  

@@ -112,7 +112,7 @@ home_z
 - `entity`；
 - `activation.item`；
 - `placement.mode`；
-- 与 `placement.mode` 对应的配置块：`placement.death` 或 `placement.home`；
+- 与 `placement.mode` 对应的配置块：`placement.death`、`placement.home` 或 `placement.twilightforest`；
 - `spawn.mode`；
 - 与 `spawn.mode` 对应的配置块：`spawn.summon` 或 `spawn.transform`。
 
@@ -239,7 +239,7 @@ base = origin + placement.death.offset
 - `force_place: false`：以 `base` 为搜索中心，共两趟（第 1 趟遵守 `avoid_blocks`，第 1 趟无果时第 2 趟忽略它，见 §5.5）。
 - 搜索成功：放置在搜索到的位置。
 - 两趟搜索都失败且 `search_failure_fallback: true`：目标区块已加载时直接放置在 `base`（**覆盖该处方块**，见 §5.4）。
-- 两趟搜索都失败且 `search_failure_fallback: false`：不放置并输出 `warn`。**这是唯一会主动放弃的分支。**
+- 两趟搜索都失败且 `search_failure_fallback: false`：不放置并输出 `warn`。这是**搜索路径**唯一会主动放弃的分支；`keep_existing`、TF 锚点硬守卫、维度不可用、`writeCage` 失败是另外的停止路径。
 - 目标维度不可用：按 §5.3.1 立即失败，不进入队列。
 - 目标区块未加载：不执行同步写入，进入持久化待放置队列。
 
@@ -256,7 +256,7 @@ base = origin + placement.home.offset
 - `force_place: false`：以 `base` 为搜索中心，共两趟（第 1 趟遵守 `avoid_blocks`，第 1 趟无果时第 2 趟忽略它，见 §5.5）。
 - 搜索成功：放置在搜索到的位置。
 - 两趟搜索都失败且 `search_failure_fallback: true`：目标区块已加载时直接放置在 `base`（**覆盖该处方块**，见 §5.4）。
-- 两趟搜索都失败且 `search_failure_fallback: false`：不放置并输出 `warn`。**这是唯一会主动放弃的分支。**
+- 两趟搜索都失败且 `search_failure_fallback: false`：不放置并输出 `warn`。这是**搜索路径**唯一会主动放弃的分支；`keep_existing`、TF 锚点硬守卫、维度不可用、`writeCage` 失败是另外的停止路径。
 - 目标维度不可用：按 §5.3.1 立即失败，不进入队列。
 - 目标区块未加载：不执行同步写入，进入持久化待放置队列。
 - 无 Home 记录：不放置、不使用死亡点，并输出包含实体 ID、UUID、死亡维度、死亡坐标和补救建议的 `warn`。
@@ -370,7 +370,7 @@ dedupKey = (targetDimension, targetBase)
 
 实现在 `PlacementResolver.findPlacementPos(level, base, placement)`：第 1 趟以 `honourAvoid=true` 调用内部 `search(...)`，为空且列表非空时再以 `honourAvoid=false` 调一次。
 
-**为什么"忽略避让"是安全的（关键性质）：** 搜索候选必须是**空气或可替换方块**（`state.isAir() || state.canBeReplaced()`），这是两趟共有的硬过滤。被避让的方块（箱子、祭坛……）本身既不是空气也不可替换，**永远不可能成为目标位**。因此第 2 趟的最坏结果只是"笼子坐在箱子上面"，不会覆盖箱子；避让从"可能导致笼子消失的硬约束"降级为"只在有替代位置时生效的偏好"。**避让永远不会导致放不出笼子。**
+**为什么"忽略避让"是安全的（关键性质）：** 搜索候选必须是**空气或可替换方块**（`state.isAir() || state.canBeReplaced()`），这是两趟共有的硬过滤。被避让的**实心方块**（箱子、祭坛……）本身既不是空气也不可替换，**不会成为目标位**；如果 `avoid_blocks` 里包含可替换方块（草、雪层等），第 2 趟可能接受它。因此第 2 趟的最坏结果通常是"笼子坐在箱子上面"，不会覆盖箱子；避让从"可能导致笼子消失的硬约束"降级为"只在有替代位置时生效的偏好"。**避让不会导致放不出笼子。**
 
 #### 5.5.2 被推翻的旧设计（v3）与它的失败模式
 
@@ -409,7 +409,7 @@ v3 的实现是：
 | 全局 `compat.protectedBlockIds` 默认含 `cataclysm:boss_respawner` | **配置项与字段一并删除**；该 id 改为写进每条规则的 `avoid_blocks` |
 | 失败模式：笼子完全不出现（ABANDON） | 失败模式：笼子落在被避让方块**上面**（可接受） |
 
-**被明确接受的代价：** `force_place: true` 与 `search_failure_fallback: true` 现在可以覆盖任何方块（含箱子、基岩、别的模组的刷怪笼），旧方块及其内容蒸发、不掉落。接受它的理由是这两条路径的语义本来就是"无论如何都必须把笼子放出来"，而它们的触发条件很窄（见 §5.4）；32 条内置规则全部为 `force_place: false`，暮色森林条目还用 `place_delay_ticks` 等过死亡动画与战利品箱，让第 1 趟有充足机会避开箱子。
+**被明确接受的代价：** `force_place: true` 与 `search_failure_fallback: true` 现在可以覆盖任何方块（含箱子、基岩、别的模组的刷怪笼），旧方块及其内容蒸发、不掉落。接受它的理由是这两条路径的语义本来就是"无论如何都必须把笼子放出来"，而它们的触发条件很窄（见 §5.4）。**截至 2026-11-03 的最终版：24 条非 TF 内置规则为 `force_place: false`；8 条暮色森林主线为 `force_place: true`，直接放 `HomePos+[0,-1,1]`，不再用 `place_delay_ticks`（改为等待实体 `remove(KILLED)`），因此 `force_place` 的代价对 TF 是明确接受的；其余 24 条仍走搜索并保留 `place_delay_ticks` 等过死亡动画与战利品箱。**
 
 **给后来者的约束：**
 1. 不要重新引入 `protected_blocks`、`PROTECTED_BLOCK_IDS` 或任何"写入前的保护拒绝"分支——它会立刻重建上面那条 ABANDON 链路；
@@ -652,9 +652,9 @@ src/main/resources/data/**/boss_respawner/entries/*.json
 - Boss 换阶段生成新 UUID 时，只有通过本模组重生笼生成的实体能可靠继承 Home；第三方自行替换实体不在本次范围内。
 - **无 Home 记录时不会生成重生笼**：若某实体在任何时刻都未被本模组观察到（例如规则在其实体已加载之后才通过 `/reload` 添加，且补登记未覆盖），该实体死亡时不会放置重生笼，也不会回退到死亡位置。§7.3 的补登记与 §5.2 的警告日志就是为了让这种情况既罕见又可定位。
 - **`force_place: true` 与兜底强制放置会覆盖目标位置上的任何方块**（含箱子、基岩、别的模组的刷怪笼），旧方块及其内容直接蒸发、不掉落；`avoid_blocks` 对这两条路径完全无效。迟到的 defer 任务也可能在玩家已改造过的位置落位，而重生笼方块为 `strength(-1.0F, ...)`，在生存模式下**不可破坏**，误放无法由玩家自行清除。规则作者应据此谨慎设置 `placement.home.offset`。这是 v4 用两趟搜索取代 `protected_blocks` 硬底线时明确接受的代价（§5.5.3）。
-- **避让不会导致笼子消失**：`avoid_blocks` 只影响笼子放在哪里。唯一会主动放弃的分支是"两趟搜索都失败且 `search_failure_fallback: false`"，另有"目标区块始终未加载"（永久排队，设计如此）与"`duplicate.mode: keep_existing` 且附近已有笼"（设计如此）。
+- **避让不会导致笼子消失**：`avoid_blocks` 只影响笼子放在哪里。搜索路径唯一会主动放弃的分支是"两趟搜索都失败且 `search_failure_fallback: false`"，另有"`duplicate.mode: keep_existing` 且附近已有笼"（设计如此）。目标在建筑高度外属于永远不可能加载，现行实现会立即失败并清理 home，不创建任务。
 - 未加载目标区块时不会同步加载，而是永久保留持久化 defer 任务。任务规模由去重键 `(targetDimension, targetBase)` 界定，即与「出现过的放置目标数」成正比，而不是与历史死亡总数成正比。
 - 目标维度不可用时立即失败并清理该实体的 Home 记录，因此不会因为维度被移除而留下永远无法完成的任务。
 - 同一 Home 使用固定坐标强制放置且允许多笼时，相同坐标最终只能保留一个方块实体。
 - SavedData 的 `setDirty()` 依赖正常世界保存流程，不提供每次登记立即落盘的事务保证。
-- 若数据文件的 `dataVersion` 高于本模组支持的版本，本模组会拒绝读写该文件；降级后新版本写入的 Home 数据与待放置任务不可用（但不会被覆盖破坏）。
+- 若数据文件的 `dataVersion` 高于本模组支持的版本，本模组会拒绝写入和内存修改；降级后新版本写入的 Home 数据与待放置任务不可用（但不会被覆盖破坏）。

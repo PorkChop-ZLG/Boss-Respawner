@@ -1,10 +1,8 @@
 # Twilight Forest 放置模式（B 方案）设计
 
 **日期：** 2026-11-02
-**状态：** 已批准并实现（含 2026-11-02 第一版修复、2026-11-03 force-place 第二/三/四版修复）
-**方案：** B —— 固定锚点 + 死亡结算 + 笼子旁置（第四版：8 条全部 force；巫妖刷怪笼在奖励箱格，其余 7 条在 HomePos；笼子与箱子同一水平面；无 home 重设）
-**后续修复：** 8 条主线 `offset:[0,-1,1]`、`placement.force_place:true`、`require_ground:false`、`spawn.transform.force_place:true`；巫妖 `spawner_offset:[0,-1,0]`，其余 7 条 `[0,0,0]`（不再做 home 重设/旧笼迁移）；娜迦提示仅保留给非 force 自定义规则；谜题羊改回 `home` + `summon`。详见
-[2026-11-02 Twilight Forest 模式问题诊断与修复计划](2026-11-02-twilightforest-mode-fix-plan.md)。
+**状态：** 已批准并实现（最终版 2026-11-03/04：8 条全部 force；巫妖刷怪笼在奖励箱格，其余 7 条在 HomePos；笼子与箱子同一水平面；无 home 重设）
+**方案：** B —— 固定锚点 + 死亡结算 + 笼子旁置；最终 `placement.offset = [0,-1,1]`、`placement.force_place = true`、`require_ground = false`、`spawn.transform.force_place = true`；巫妖 `spawner_offset:[0,-1,0]`，其余 7 条 `[0,0,0]`；不再做 home 重设/旧笼迁移。
 
 ## 问题
 
@@ -22,7 +20,7 @@
 
 **目标**
 
-- TF Boss 死后，在奖励箱旁边正确出现一个重生笼；不覆盖、不清空、不挖掉箱子。
+- TF Boss 死后，在奖励箱旁边正确出现一个重生笼；笼子本身不覆盖、不清空奖励箱。**最终版由巫妖的 `spawn.transform.force_place:true` 替换 `HomePos.below()` 的奖励箱格；其余 7 条在 `HomePos`，仅当该格本身是箱子时 force 替换。这是明确接受的取舍。**
 - 激活后由 TF 自己的 boss spawner 复活 Boss，home 不随复活次数漂移。
 - 幻影骑士只产生 1 个笼；巫妖影子克隆不产生笼。
 - 不引入 mixin；TF 未加载时本模组完全不受影响。
@@ -42,25 +40,21 @@
 2. `schedule`：
    - 过滤 Lich 影子克隆（`MasterLich`）与非终局幻影骑士（64 格内还有存活同类）；
    - 只读实体的 `HomePos`（`{dimension, pos}`）；缺失/跨维度时退回死亡位置；
-   - 目标 = `HomePos + placement.offset`（内置规则 `[1,0,0]`，即箱子旁边）；
+   - 目标 = `HomePos + placement.offset`（最终 `[0,-1,1]`，即奖励箱南侧一格、同一水平面）；
    - 建立一个**持久化** `PendingPlacementTask`，额外携带 `WaitForEntityUuid`、
      `DeathDimension`、`DeathPos`。
 3. 等待：`PendingPlacementService` 在 `EntityLeaveLevelEvent`（`RemovalReason.KILLED`）时把任务
    转为普通待放置任务；同时每 tick 的 `stillWaitingForRemoval` 作为兜底。TF 的箱子在
    `remove(KILLED)` 内、实体真正移除之前生成，因此“已移除”保证箱子已存在。
 4. 放置：沿用现有 `RespawnCagePlacer.executeDeferred` 管线（搜索、重复检查、快照、defer）。
-   内置规则 `force_place: false`、`search_failure_fallback: false`：搜索不到空位宁可不放，也不覆盖奖励箱。
-   后续 8 条 TF 主线把 cage 的 `force_place` 改为 `true`、偏移改为 `[0,-1,1]`；
-   8 条的 `spawn.transform.force_place` 为 `true`；巫妖 `spawner_offset` 为 `[0,-1,0]`，其余 7 条为 `[0,0,0]`；详见修复计划。
+   最终 8 条 TF 主线使用 `placement.force_place: true` 和 `[0,-1,1]`，不搜索；`search_failure_fallback:false` 保留为语义说明，在 force 路径下不参与。`spawn.transform.force_place` 为 `true`；巫妖 `spawner_offset` 为 `[0,-1,0]`，其余 7 条为 `[0,0,0]`；详见修复计划。
 
 ### `spawn.transform.at`
 
 - 新增 `at: "cage" | "anchor"`，默认 `"cage"`（旧行为）。
 - `"anchor"`：动画结束后**删掉笼子**，把目标方块放到笼子保存的 home 锚点。
-- 笼子放在 `HomePos + [1,0,0]`，spawner 放在 `HomePos`；TF spawner 把新 Boss 的 home 设为
-  `HomePos`，所以下一轮箱子仍在 `HomePos.below()`，不漂移。
-- 锚点被占据时：空的原版/暮色箱子移除后放入 spawner；非空箱子或其它方块则拒绝激活，笼子
-  保持未点亮、不消耗钥匙。
+- 笼子放在 `HomePos + [0,-1,1]`，spawner 放在 `HomePos`（巫妖在 `HomePos + [0,-1,0]`）；TF spawner 把新 Boss 的 home 设为原 `HomePos`，所以下一轮箱子仍在 `HomePos.below()`，不漂移。
+- 锚点/目标被占据时：普通（非 force）规则会拒绝激活并保留笼子；最终 8 条全部 `spawn.transform.force_place:true`，非空箱子会被直接替换（巫妖替换奖励箱；其余 7 条只会在 `HomePos` 本身是箱子时替换），非箱子方块仍拒绝。
 
 ### 幻影骑士 / 巫妖
 
@@ -86,8 +80,8 @@
 death → TF mode → 过滤克隆/非终局骑士 → 读 HomePos
       → 持久化任务 (target = HomePos + offset, wait = UUID)
       → 实体 remove(KILLED) → 任务 ready
-      → 目标区块加载 → 搜索/写入 → 笼子在箱子旁边
-      → 激活 → 动画 → 删笼子，spawner 放到 HomePos
+      → 目标区块加载 → force 写入 → 笼子在箱子旁边
+      → 激活 → 动画 → 删笼子，spawner 放到 HomePos（巫妖放到 HomePos + [0,-1,0]）
       → TF spawner 生成 Boss，home = HomePos
       → 下次死亡，箱子仍在 HomePos.below()
 ```
@@ -95,21 +89,20 @@ death → TF mode → 过滤克隆/非终局骑士 → 读 HomePos
 ## 错误处理
 
 - 无 `HomePos`：退回死亡位置并输出警告；箱子若在死亡位置，激活时按“锚点被占据”策略处理。
-- 目标区块未加载：持久化 defer，不强制加载；重启后继续。
+- 目标区块未加载：持久化 defer，不强制加载；重启后继续。目标在建筑高度外：立即失败并清理 home，不创建任务。
 - 死亡动画期间区块卸载：任务保留 `WaitForEntityUuid`，实体重新加载并完成后触发。
-- 搜索失败：`search_failure_fallback: false` → 本次不放并警告，不覆盖任何方块。
-- 锚点非空：拒绝激活，不消耗钥匙，提示先清空/取走。
+- 搜索失败：只对非 force 自定义规则有意义；8 条 TF 主线用 `placement.force_place:true`，不走搜索，`search_failure_fallback:false` 只是保留语义。非 force 规则搜索失败且 fallback=false 时本次不放并警告。
+- 锚点非空：最终 8 条 `spawn.transform.force_place:true`，非空箱子会被替换（巫妖替换奖励箱；其余 7 条只会在 `HomePos` 本身是箱子时替换）；非箱子方块仍拒绝。
 
 ## 测试
 
 - 单元：`twilightforest` 模式解析、`transform.at` / `spawner_offset` / `force_place` 解析/快照、`PendingPlacementTask` 等待字段
   往返、`HomePos` / `MasterLich` NBT 契约、8 条主线 TF 内置 JSON + 谜题羊 `home` 的解析。
-- 构建：`gradlew.bat test`（当前 106 项全绿）。
-- 实机（待用户）：逐个 TF Boss 验证箱子可开、笼子在旁、激活后 Boss 正确生成、home 不漂移；
-  幻影骑士只出 1 笼；巫妖克隆不触发；8 条主线允许悬空；巫妖的奖励箱替换、其余 7 条的奖励箱保留。
+- 构建：`gradlew.bat test`（当前 114 项全绿）。
+- 实机（2026-11-03/04 已完成）：8 个 TF 主线 Boss + 谜题羊、四个联动模组全部验证；箱子可开/笼子在旁/激活后 Boss 正确生成/home 不漂移；幻影骑士只出 1 笼；巫妖克隆不触发；8 条主线允许悬空；巫妖的奖励箱替换、其余 7 条的奖励箱保留。日志复核见 `docs/reviews/2026-11-03-code-review-0.1.0-to-f1cb657.md`。
 
 ## 后续
 
-实机测试发现的问题与修复计划见
-[2026-11-02 Twilight Forest 模式问题诊断与修复计划](2026-11-02-twilightforest-mode-fix-plan.md)。
+最终实现与历史迭代的差异见
+[2026-11-02 Twilight Forest 模式问题诊断与修复计划](2026-11-02-twilightforest-mode-fix-plan.md)；该计划 §10-13 保留为历史记录。
 

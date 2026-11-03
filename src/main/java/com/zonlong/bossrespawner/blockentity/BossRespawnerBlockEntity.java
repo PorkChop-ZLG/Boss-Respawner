@@ -701,20 +701,8 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         return transformAtAnchor;
     }
 
-    public int[] getSpawnerOffset() {
-        return spawnerOffset.clone();
-    }
-
     public boolean isTransformForcePlace() {
         return transformForcePlace;
-    }
-
-    public String getTransformBlockId() {
-        return transformBlockId;
-    }
-
-    public CompoundTag getTransformNbt() {
-        return transformNbt;
     }
 
     private boolean anyPlayerInRange(Level level) {
@@ -810,16 +798,6 @@ public class BossRespawnerBlockEntity extends BlockEntity {
     /** True when this cage carries a home anchor, i.e. it was created from a home-mode rule. */
     public boolean hasHomeAnchor() {
         return homeDimension != null && homePos != null;
-    }
-
-    @Nullable
-    public ResourceKey<Level> getHomeDimension() {
-        return homeDimension;
-    }
-
-    @Nullable
-    public BlockPos getHomePos() {
-        return homePos;
     }
 
     /**
@@ -990,10 +968,6 @@ public class BossRespawnerBlockEntity extends BlockEntity {
 
     public int getRetryIntervalTicks() {
         return retryIntervalTicks;
-    }
-
-    public int getLitTicks() {
-        return litTicks;
     }
 
     public AnimationState getAnimationState(String input) {

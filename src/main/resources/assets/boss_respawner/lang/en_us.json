@@ -17,7 +17,7 @@
   "boss_respawner.configuration.debug.debugInfo.tooltip": "Print Boss respawner debug information to the log.",
 
   "boss_respawner.configuration.general.enableMod": "Enable Mod",
-  "boss_respawner.configuration.general.enableMod.tooltip": "Master switch for all respawn cage logic. When false, no cages are placed or spawned.",
+  "boss_respawner.configuration.general.enableMod.tooltip": "Master switch for all respawn cage logic. When false, new placement/spawning stops; active cages and queued tasks pause until re-enabled.",
   "boss_respawner.configuration.general.highlightBossRespawner": "Highlight",
   "boss_respawner.configuration.general.highlightBossRespawner.tooltip": "Add a glowing outline to respawners so players can find them through blocks.",
   "boss_respawner.configuration.general.highlightBossRespawnerRange": "Highlight Distance",

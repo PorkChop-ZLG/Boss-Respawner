@@ -3,6 +3,8 @@
 > **重要提示：** 本文保留较多 v1 设计对比内容。当前模组实现以 `README.md` 和 `docs/universal-boss-respawner-design-v2.md` 为准。
 > 文中 `HomePos` / `visual.*` / 每区块限制 / `set_home_to_cage` / `HomePosLocator` 均已在 v2 中移除，不代表当前实现。
 >
+> **更新（2026-11-04）：** 当前为 schema v4，已支持 `death` / `home` / `twilightforest` 三种放置模式；`death_or_home`、`Config.MAX_CAGES_PER_CHUNK`、`Config.FOREIGN_CAGE_BLOCK_IDS`、`protected_blocks`/`compat.protectedBlockIds` 均不存在。`avoid_blocks` 只是每条规则的搜索第一趟偏好；`force_place`/兜底仍可覆盖外来笼/祭坛（Critical 2 于 2026-11-04 明确选择保持现状），详见 README 与 `docs/home-respawn-design.md` §5.5。
+>
 > **更新（2026-09-05）：** 本模组已按代码审查调整设计：
 > - 不再支持 HomePos / 老巢，只在死亡地点生成。
 > - 移除 `visual.*`，始终渲染预览。

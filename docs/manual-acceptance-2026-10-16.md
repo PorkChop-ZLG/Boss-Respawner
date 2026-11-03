@@ -1,5 +1,7 @@
 # Home 出生点重生笼 · 人工实机验收清单
 
+> **执行状态（2026-11-04）：** 2026-11-03/04 已在专用测试整合包完成 8 个暮色森林主线 Boss + 谜题羊 + 四个联动模组的实机测试（High 1 数值、High 2 Peaceful、Medium 4 跨维度、Medium 5 建筑高度外均验证）；Critical 1/High 3/Medium 5 的日志复核见 [2026-11-03 审查报告](reviews/2026-11-03-code-review-0.1.0-to-f1cb657.md)。下表历史勾选未逐项补填。
+
 **被测版本：** `boss_respawner-0.1.0.jar`（`gradlew build` 产物，SHA 见交付报告）
 **目标环境：** Minecraft 1.21.1 / NeoForge 21.1.219 / Java 21
 **配套测试数据包：** [`docs/examples/acceptance-datapack/`](examples/acceptance-datapack/)
@@ -286,7 +288,7 @@ saves/<存档名>/datapacks/acceptance-datapack/
 |---|---|
 | P7-a | **没有**重生笼生成 |
 | P7-b | 日志 `No safe placement position for minecraft:blaze near <坐标> and search_failure_fallback is false; no respawn cage placed` |
-| P7-c | 这是服务端**唯一**一条会主动放弃放置的分支（另两条"停止"分别是"目标区块始终未加载"与 `keep_existing` 命中已有笼，都属设计如此） |
+| P7-c | 这是**搜索路径**唯一一条会主动放弃放置的分支（另两条"停止"分别是"目标区块始终未加载"与 `keep_existing` 命中已有笼，都属设计如此；该清单为历史版本） |
 
 ### P8 `keep_existing` 生效 【实机+日志】
 

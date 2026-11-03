@@ -62,3 +62,23 @@
 5. **历史评审/计划文档没有统一标记或索引，仍混有已删除配置。** `docs/code-review-2026-09-05.md:446`（`Config.foreignCageBlockIds`）、`docs/code-review-2026-09-06.md`、`docs/fix-plan-2026-09-06.md`、`docs/home-respawn-design-review-2026-10-16.md:414`、`docs/cataclysm-boss-respawner-comparison.md:135`（`Config.FOREIGN_CAGE_BLOCK_IDS`）仍出现 v3/v2 时代的保护/全局配置名；其中部分有“v4 已撤回”顶注，部分没有。建议在 `docs/README` 或文档头部明确“历史文档”与当前文档的边界，避免后续维护者按旧评审重新引入 `protected_blocks`/`foreignCageBlockIds`。  
 6. **几处文档/语言文本与实现语义不一致。** `docs/home-respawn-design.md:660` 说 dataVersion 更新会“拒绝读写”，实际 `BossHomeSavedData.readOnly` 只抑制 `save`，读取和内存修改仍发生（见代码审查 Low 3）；`BossHomeSavedData.java:46` 说 home 记录“Entries are consumed when a cage is placed”，但 ABANDONED/非死亡移除路径并不删除（见代码审查 High 3）；`lang/en_us.json:31` 的 `respawn_failed` 用 `%s` 表示位置，代码实际传入的是实体 ID，`lang/zh_cn.json:32` 的 `anchor_occupied` 又只提示“清空奖励箱”，与 en 的“home is occupied”不完全等价。  
 
+## 设计一致性修复状态（2026-11-04）
+
+> 用户已完成 8 个暮色森林主线 Boss + 谜题羊 + 四个联动模组的实机测试，并复核了 `debug.log`。以下为设计一致性检查的闭环记录。
+
+- **High 1 已修复**：`README.md:30`、`docs/twilight-forest-mapping.md:210`、B 方案设计正文已改为“8 条 TF 使用 `placement.force_place:true`；`search_failure_fallback:false` 只是保留语义；笼子不压奖励箱靠 TF 锚点硬守卫/偏移；巫妖的 `spawn.transform.force_place` 替换奖励箱格”。
+- **High 2 已闭环**：代码已在 tick/activate/useItemOn/PendingPlacementService/EntityHomeRegistrationHandler/TwilightSettlementService 检查 `Config.ENABLE_MOD`；README、`Config.java` 注释、en_us/zh_cn 的 `enableMod.tooltip` 已改为“关闭停止新放置/召唤；已点亮笼子和排队任务暂停，重新开启继续”。
+- **High 3 已记录取舍**：README v1→v4 迁移表已明确“`foreignCageBlockIds` 的硬拒绝检查已删除；`avoid_blocks` 只是搜索偏好；force/兜底仍可覆盖；0.1.0 的‘外来笼不可覆盖’不再保证”。这是用户选择的 **Critical 2 = D** 的明确记录，不再作为待修项。
+- **Medium 1 已修复**：`docs/home-respawn-design.md:412` 改为“24 条非 TF `force_place:false`；8 条 TF `force_place:true`，直接放 `HomePos+[0,-1,1]`，不再用 `place_delay_ticks`，改为等待 `remove(KILLED)`”。
+- **Medium 2 已修复**：B 方案设计状态改为最终版；正文统一为 `[0,-1,1]`、`placement.force_place:true`、巫妖/其余 7 条 `spawner_offset`、force 替换箱子的最终规则；`106` 改为 `114`；“实机待用户”改为 2026-11-03/04 已完成。
+- **Medium 3 已修复**：`README.md:389` 已改为“搜索路径唯一会主动放弃的分支”，并列出 `keep_existing`/TF 锚点/维度/写入失败等停止路径。
+- **Medium 4 已修复/记录**：`docs/bosses-rise-mapping.md:74` 已把原版箱子避让标为“2026-11-04 明确接受的设计限制”，不再写“等你确认”；修复计划第 12 节的“均已改”已改为历史记录并指向第 13/14 节最终版。
+- **Low 1 已修复**：README 的 `placement.mode` 校验补上 `twilightforest`；“`setBlock` 不会失败”改为 `finishTransform` 检查返回值并退款；“被避让的方块永远不会成为目标位”改为仅对实心方块成立，可替换方块可能在第二趟被接受。
+- **Low 2 已修复**：删除 `RespawnRuleManager.byId` 及 `getById()`；删除 `BossRespawnerBlockEntity` 的 `getHomeDimension/getHomePos/getSpawnerOffset/getTransformBlockId/getTransformNbt/getLitTicks`；`BossHomeSavedData.isReadOnly()` 降为包内可见（仅测试使用）。
+- **Low 3 已修复**：`RespawnEntry.TransformRule` Javadoc 改为巫妖 `[0,-1,0]`、8 条 TF 都启用 `spawn.transform.force_place`；B 方案状态/实机行已更新；`Config.java` 的“one non-negotiable safety floor”已删除。
+- **Low 4 已修复**：`BuiltinEntriesTest` 注释改为“8 条 TF force；fallback/avoid 是模板数据，force 路径不读取”；README 的 force/TF 说明已同步。
+- **Low 5 已修复**：新增 `docs/README.md` 当前/历史文档索引；`code-review-2026-09-05/06`、`fix-plan-2026-09-06`、`plans/2026-09-07...`、`cataclysm-boss-respawner-comparison` 顶部已加历史/状态说明；`home-respawn-design-review-2026-10-16` 原有 v4 撤回说明保留。
+- **Low 6 已修复**：`docs/home-respawn-design.md:660` 改为“拒绝写入和内存修改”；`BossHomeSavedData` 注释改为“成功放置/放弃/非死亡移除都会清理”；`respawn_failed`/`anchor_occupied` 中英文案已同步。
+- **日志复核补充（Low，非泄漏）**：`debug.log` 中 13 条 `No home record` 是联动 Boss 对同一 UUID 连续触发两次 `LivingDeathEvent` 的第二次事件；第一次已成功放笼并删除 home，第二次只是日志噪音。`Removed home record ... after successful placement` 30 条，`ConcurrentModificationException`/`Failed to schedule` 0 条；可选的后续 Low 是同 UUID 短窗口去重或改写该警告文案。
+- **验证**：`gradlew.bat test` **114 项全部通过**；`gradlew.bat build` 成功；设计一致性文档已同步。
+

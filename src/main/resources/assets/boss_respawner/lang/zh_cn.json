@@ -17,7 +17,7 @@
   "boss_respawner.configuration.debug.debugInfo.tooltip": "在日志中打印Boss重生笼的调试信息。",
 
   "boss_respawner.configuration.general.enableMod": "启用模组",
-  "boss_respawner.configuration.general.enableMod.tooltip": "Boss重生笼功能总开关。关闭后不会生成或召唤任何重生笼。",
+  "boss_respawner.configuration.general.enableMod.tooltip": "Boss重生笼功能总开关。关闭后停止新的放置/召唤；已点亮笼子和已排队任务暂停，重新开启后继续。",
   "boss_respawner.configuration.general.highlightBossRespawner": "高亮显示",
   "boss_respawner.configuration.general.highlightBossRespawner.tooltip": "为重生笼添加发光描边，方便玩家透过方块寻找重生笼。",
   "boss_respawner.configuration.general.highlightBossRespawnerRange": "高亮距离",
