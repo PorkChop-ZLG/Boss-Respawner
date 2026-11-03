@@ -48,13 +48,13 @@ class SpawnNbtOrderingTest {
         assertTrue(nextMethod > methodStart, "could not delimit the trySpawn body");
         String body = source.substring(methodStart, nextMethod);
 
-        int loadIndex = body.indexOf("entity.load(spawnNbt)");
+        int loadIndex = body.indexOf("entity.load(toLoad)");
         int setPosIndex = body.indexOf("entity.setPos(spawnPos)");
 
-        assertTrue(loadIndex >= 0, "trySpawn no longer applies spawn.nbt via entity.load(spawnNbt)");
+        assertTrue(loadIndex >= 0, "trySpawn no longer applies spawn.nbt via entity.load(toLoad)");
         assertTrue(setPosIndex >= 0, "trySpawn no longer positions the entity via entity.setPos(spawnPos)");
         assertTrue(loadIndex < setPosIndex,
-                "entity.load(spawnNbt) must run BEFORE entity.setPos(spawnPos).\n"
+                "entity.load(toLoad) must run BEFORE entity.setPos(spawnPos).\n"
                         + "Entity.load() has no contains(\"Pos\") guard and ListTag.getDouble() returns 0.0 for a "
                         + "missing element, so loading NBT after positioning teleports the spawned entity to "
                         + "(0, 0, 0) whenever the rule's spawn.nbt omits Pos.");

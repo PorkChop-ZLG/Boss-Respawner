@@ -1,14 +1,18 @@
 package com.zonlong.bossrespawner.block;
 
 import com.mojang.serialization.MapCodec;
+import com.zonlong.bossrespawner.Config;
 import com.zonlong.bossrespawner.DebugLog;
 import com.zonlong.bossrespawner.UniversalBossRespawner;
 import com.zonlong.bossrespawner.activation.KeyItemPayment;
 import com.zonlong.bossrespawner.blockentity.BossRespawnerBlockEntity;
+import com.zonlong.bossrespawner.data.BossHomeSavedData;
 import com.zonlong.bossrespawner.init.ModBlockEntities;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -58,8 +62,24 @@ public class BossRespawnerBlock extends BaseEntityBlock {
     }
 
     @Override
+    public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
+        if (!state.is(newState.getBlock()) && level instanceof ServerLevel serverLevel
+                && level.getBlockEntity(pos) instanceof BossRespawnerBlockEntity cage) {
+            ResourceLocation typeId = ResourceLocation.tryParse(cage.getEntityTypeId());
+            if (typeId != null) {
+                BossHomeSavedData.get(serverLevel).removeCage(
+                        serverLevel.dimension().location(), typeId, pos);
+            }
+        }
+        super.onRemove(state, level, pos, newState, movedByPiston);
+    }
+
+    @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos,
                                              Player player, InteractionHand hand, BlockHitResult hitResult) {
+        if (!Config.ENABLE_MOD.getAsBoolean()) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
         if (state.getValue(LIT)) {
             DebugLog.info("Right-click ignored: respawner is already lit at {}", pos);
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
@@ -96,6 +116,10 @@ public class BossRespawnerBlock extends BaseEntityBlock {
             if (be.activate(level)) {
                 if (!player.getAbilities().instabuild && be.shouldConsume()) {
                     int paid = KeyItemPayment.drain(paymentSlots, keyItem, required);
+                    if (paid > 0) {
+                        // Remember what was removed so a later reset/retry exhaustion can refund it.
+                        be.recordPayment(player, keyItem, paid);
+                    }
                     if (paid < required) {
                         // Unreachable while canPay() and drain() walk the same list in the same order; log
                         // loudly rather than let a shortfall pass for a free summon.
@@ -109,12 +133,26 @@ public class BossRespawnerBlock extends BaseEntityBlock {
             } else {
                 // Do not leave the player guessing when a chest or a block occupies the home/target cell.
                 switch (be.getLastTransformFailure()) {
+                    case PEACEFUL -> player.displayClientMessage(
+                            Component.translatable("boss_respawner.message.peaceful"), false);
+                    case BLOCK_MISSING -> player.displayClientMessage(
+                            Component.translatable("boss_respawner.message.block_missing"), false);
+                    case NO_ANCHOR -> player.displayClientMessage(
+                            Component.translatable("boss_respawner.message.no_anchor"), false);
+                    case WRONG_DIMENSION -> player.displayClientMessage(
+                            Component.translatable("boss_respawner.message.wrong_dimension"), false);
+                    case MISSING_ENTITY -> player.displayClientMessage(
+                            Component.translatable("boss_respawner.message.entity_missing"), false);
+                    case MISSING_KEY -> player.displayClientMessage(
+                            Component.translatable("boss_respawner.message.key_missing"), false);
+                    case SET_BLOCK_FAILED -> player.displayClientMessage(
+                            Component.translatable("boss_respawner.message.activate_failed"), false);
                     case ANCHOR_OCCUPIED -> player.displayClientMessage(
                             Component.translatable("boss_respawner.message.anchor_occupied"), false);
                     case TARGET_OCCUPIED -> player.displayClientMessage(
                             Component.translatable("boss_respawner.message.target_occupied"), false);
                     default -> {
-                        // Other refusals already log their own reason; no player-facing message yet.
+                        // Other refusals already log their own reason; no extra message is needed.
                     }
                 }
             }

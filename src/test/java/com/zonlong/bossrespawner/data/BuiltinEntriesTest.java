@@ -203,9 +203,9 @@ class BuiltinEntriesTest {
             assertEquals(twilightForest, modeObject.get("force_place").getAsBoolean(),
                     loaded.name() + ": force_place");
             if (twilightForest) {
-                // The TF mode must never force the cage over the death chest via fallback: the anchor/chest
-                // guard and search_failure_fallback:false still win; the enabled force_place only allows
-                // the cage's own placement to replace a blocking block when the search actually chooses it.
+                // The eight TF rules force the exact cage cell, so search_failure_fallback is inert runtime
+                // data kept for schema/template completeness. The TF anchor/chest guard still runs after
+                // the force choice; force_place does not bypass it.
                 assertFalse(modeObject.get("search_failure_fallback").getAsBoolean(),
                         loaded.name() + ": twilightforest search_failure_fallback");
                 assertFalse(modeObject.get("require_ground").getAsBoolean(),
@@ -214,12 +214,12 @@ class BuiltinEntriesTest {
                 assertTrue(modeObject.get("search_failure_fallback").getAsBoolean(),
                         loaded.name() + ": search_failure_fallback");
             }
-            // The old global foreignCageBlockIds avoidance was migrated into every rule explicitly, and in v4
-            // avoid_blocks is the ONLY block list there is, so an empty one would silently drop the avoidance
-            // of another mod's respawner block.
+            // The old global foreignCageBlockIds avoidance was migrated into every rule explicitly. The
+            // TF force path does not consult avoid_blocks at runtime; the list is preserved as template
+            // data and for rules that later switch to the search path.
             assertTrue(stringArray(modeObject, "avoid_blocks").contains("cataclysm:boss_respawner"),
-                    loaded.name() + ": the migrated avoidance of cataclysm:boss_respawner must survive in "
-                            + "avoid_blocks, which is now the only block list");
+                    loaded.name() + ": the migrated avoidance of cataclysm:boss_respawner must remain in "
+                            + "avoid_blocks for template completeness");
         }
     }
 

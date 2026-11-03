@@ -45,6 +45,39 @@ public record RespawnEntry(
     public static final int SCHEMA_VERSION = 4;
 
     /**
+     * Defensive upper bounds for data-driven numbers. A malformed pack must not be able to make the server
+     * loop for minutes or allocate an unbounded entity batch. The bounds are intentionally generous for
+     * normal packs; the built-in rules are far below them.
+     */
+    public static final int MAX_ACTIVATION_AMOUNT = 2304;
+    public static final int MAX_COUNT = 64;
+    public static final int MAX_SEARCH_DOWN = 128;
+    public static final int MAX_SEARCH_UP = 64;
+    public static final int MAX_HORIZONTAL_RADIUS = 32;
+    public static final int MAX_DELAY_TICKS = 24000;
+    public static final int MAX_OFFSET = 64;
+    public static final int MAX_SPAWN_OFFSET = 16;
+    public static final double MAX_PLAYER_RANGE = 128.0D;
+    public static final int MAX_ATTEMPTS = 1000;
+    public static final int MAX_RETRY_INTERVAL_TICKS = 1200;
+    public static final int MAX_DUPLICATE_RADIUS = 32;
+
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static int[] clampOffset(@Nullable int[] value, int limit) {
+        if (value == null || value.length != 3) {
+            return new int[]{0, 0, 0};
+        }
+        return new int[]{
+                clamp(value[0], -limit, limit),
+                clamp(value[1], -limit, limit),
+                clamp(value[2], -limit, limit)
+        };
+    }
+
+    /**
      * Explains a schema version mismatch in terms of the layout that was actually used, so the fix is
      * obvious instead of looking like a typo.
      */
@@ -246,6 +279,10 @@ public record RespawnEntry(
     }
 
     public record ActivationRule(ResourceLocation item, int amount, boolean consume) {
+        public ActivationRule {
+            amount = clamp(amount, 1, MAX_ACTIVATION_AMOUNT);
+        }
+
         static ActivationRule fromJson(JsonObject obj) {
             String itemId = getString(obj, "item", "");
             ResourceLocation item = itemId.isBlank() ? null : parseLocation(itemId);
@@ -264,6 +301,15 @@ public record RespawnEntry(
                                 boolean searchFailureFallback, int searchDown, int searchUp,
                                 int horizontalRadius, boolean requireGround, boolean avoidFluids,
                                 Set<ResourceLocation> avoidBlocks, int placeDelayTicks) {
+
+        public PlacementRule {
+            offset = clampOffset(offset, MAX_OFFSET);
+            searchDown = clamp(searchDown, 0, MAX_SEARCH_DOWN);
+            searchUp = clamp(searchUp, 0, MAX_SEARCH_UP);
+            horizontalRadius = clamp(horizontalRadius, 0, MAX_HORIZONTAL_RADIUS);
+            placeDelayTicks = clamp(placeDelayTicks, 0, MAX_DELAY_TICKS);
+            avoidBlocks = avoidBlocks == null ? Set.of() : Set.copyOf(avoidBlocks);
+        }
 
         /**
          * Parses {@code placement} and resolves the mode-specific object.
@@ -550,6 +596,16 @@ public record RespawnEntry(
                              boolean allowPeaceful, int count, int[] spawnOffset, String nbt,
                              boolean finalizeSpawn, int maxAttempts, int retryIntervalTicks) {
 
+        public SummonRule {
+            delayTicks = clamp(delayTicks, 0, MAX_DELAY_TICKS);
+            playerRange = Math.max(1.0D, Math.min(MAX_PLAYER_RANGE, playerRange));
+            count = clamp(count, 1, MAX_COUNT);
+            spawnOffset = clampOffset(spawnOffset, MAX_SPAWN_OFFSET);
+            nbt = nbt == null ? "" : nbt;
+            maxAttempts = maxAttempts < 0 ? -1 : clamp(maxAttempts, 1, MAX_ATTEMPTS);
+            retryIntervalTicks = clamp(retryIntervalTicks, 1, MAX_RETRY_INTERVAL_TICKS);
+        }
+
         static SummonRule fromJson(JsonObject obj) {
             int delayTicks = Math.max(0, getInt(obj, "delay_ticks", 20));
             boolean requirePlayerNearby = getBoolean(obj, "require_player_nearby", true);
@@ -575,8 +631,8 @@ public record RespawnEntry(
      * {@code spawn.transform}: keep the cage lit for {@code delayTicks} so its opening animation plays, then
      * hand the boss over to {@code block}.
      *
-     * <p>Only five fields, because most of the summon path has no meaning here: there is one block rather
-     * than a count of entities, and the attempt limits have nothing to govern.
+     * <p>Seven fields, not five: the original two were extended with the anchor switch and force/offset
+     * controls.
      *
      * @param block         the block to become; resolved again when the animation ends
      * @param delayTicks    how long the cage stays lit before the swap
@@ -587,20 +643,32 @@ public record RespawnEntry(
      *                      {@code /setblock} command would be. Empty leaves the block entity untouched
      * @param spawnerOffset offset of the target block from the cage's home anchor; only meaningful with
      *                      {@link PlaceAt#ANCHOR}. The default is zero, which keeps the old behaviour.
-     *                      Twilight Forest's Lich spawner must be placed one block above the Lich's home,
-     *                      because that spawner descends to the lowest air block and then moves up one.
+     *                      Twilight Forest's Lich spawner uses {@code [0,-1,0]} so the spawner occupies the
+     *                      reward-chest cell; LichSpawner then moves itself up, keeping the home stable.
      * @param forcePlace    when true, a (non-empty) chest at the target/anchor is replaced instead of
-     *                      blocking the transform. Used by Twilight Forest's Lich and Minoshroom, whose
-     *                      spawners must occupy the reward-chest cell to keep their home stable. This
-     *                      destroys the chest and its contents by design; non-chest blocks still block.
+     *                      blocking the transform. All eight Twilight Forest main-boss rules enable it; the
+     *                      Lich's target is the reward-chest cell, the other seven normally target HomePos.
+     *                      This destroys the chest and its contents by design; non-chest blocks still block.
      * @param at            where the target block is placed; {@link PlaceAt#CAGE} keeps the old in-place
      *                      behaviour, {@link PlaceAt#ANCHOR} moves it to the cage's stored home anchor
      */
     public record TransformRule(ResourceLocation block, int delayTicks, boolean allowPeaceful, String nbt,
                                 int[] spawnerOffset, boolean forcePlace, PlaceAt at) {
+        public TransformRule {
+            delayTicks = clamp(delayTicks, 0, MAX_DELAY_TICKS);
+            spawnerOffset = clampOffset(spawnerOffset, MAX_SPAWN_OFFSET);
+            nbt = nbt == null ? "" : nbt;
+        }
     }
 
     public record DuplicateRule(String mode, int searchRadius) {
+        public DuplicateRule {
+            if (!List.of("allow_multiple", "keep_existing", "replace_existing").contains(mode)) {
+                mode = "allow_multiple";
+            }
+            searchRadius = clamp(searchRadius, 0, MAX_DUPLICATE_RADIUS);
+        }
+
         static DuplicateRule fromJson(JsonObject obj) {
             // Default matches Cataclysm: no duplicate check, allow multiple respawn cages.
             String mode = getString(obj, "mode", "allow_multiple");

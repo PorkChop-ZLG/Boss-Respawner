@@ -28,7 +28,15 @@
 
   "config.jade.plugin_boss_respawner.cage_contents": "重生笼内容",
 
-  "boss_respawner.message.respawn_failed": "Boss重生笼在多次尝试后仍无法召唤生物，已重置。",
-  "boss_respawner.message.anchor_occupied": "无法复活Boss，请先清空奖励箱中的物品。",
-  "boss_respawner.message.target_occupied": "重生笼的目标位置被方块占据，请先清空该位置。"
+  "boss_respawner.message.respawn_failed": "Boss重生笼（%s）在多次尝试后仍无法召唤生物，已重置。",
+  "boss_respawner.message.anchor_occupied": "出生点被占据，请先清空该位置（若有奖励箱请先取走物品）。",
+  "boss_respawner.message.target_occupied": "重生笼的目标位置被方块占据，请先清空该位置。",
+  "boss_respawner.message.peaceful": "和平难度下无法激活重生笼。",
+  "boss_respawner.message.block_missing": "目标方块未安装，无法转换。",
+  "boss_respawner.message.no_anchor": "重生笼没有有效的出生点锚点。",
+  "boss_respawner.message.entity_missing": "目标实体已不存在，无法复活。",
+  "boss_respawner.message.key_missing": "钥匙物品已不存在，无法激活。",
+  "boss_respawner.message.activate_failed": "重生笼激活失败。",
+  "boss_respawner.message.wrong_dimension": "重生笼的出生点锚点在另一个维度。",
+  "boss_respawner.message.key_refunded": "已退还 %s × %s。"
 }

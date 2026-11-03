@@ -242,6 +242,59 @@ class RespawnEntrySchemaTest {
     }
 
     @Test
+    @DisplayName("data-driven numbers are bounded so a broken pack cannot freeze the server")
+    void dataDrivenNumbersAreBounded() {
+        RespawnEntry entry = parseOrFail("""
+                {
+                  "schema_version": 4,
+                  "entity": "minecraft:warden",
+                  "activation": { "item": "minecraft:echo_shard", "amount": 999999 },
+                  "placement": {
+                    "mode": "home",
+                    "home": {
+                      "offset": [9999, -9999, 9999],
+                      "place_delay_ticks": 999999,
+                      "search_down": 999999,
+                      "search_up": 999999,
+                      "horizontal_radius": 999999
+                    }
+                  },
+                  "spawn": {
+                    "mode": "summon",
+                    "summon": {
+                      "delay_ticks": 999999,
+                      "player_range": 9999.0,
+                      "count": 999999,
+                      "spawn_offset": [9999, -9999, 0],
+                      "max_attempts": 999999,
+                      "retry_interval_ticks": 999999
+                    }
+                  },
+                  "duplicate": { "mode": "allow_multiple", "search_radius": 999999 }
+                }
+                """);
+
+        RespawnEntry.PlacementRule placement = entry.placement();
+        assertArrayEquals(new int[]{RespawnEntry.MAX_OFFSET, -RespawnEntry.MAX_OFFSET,
+                RespawnEntry.MAX_OFFSET}, placement.offset());
+        assertEquals(RespawnEntry.MAX_SEARCH_DOWN, placement.searchDown());
+        assertEquals(RespawnEntry.MAX_SEARCH_UP, placement.searchUp());
+        assertEquals(RespawnEntry.MAX_HORIZONTAL_RADIUS, placement.horizontalRadius());
+        assertEquals(RespawnEntry.MAX_DELAY_TICKS, placement.placeDelayTicks());
+
+        RespawnEntry.SummonRule summon = entry.spawn().summon();
+        assertEquals(RespawnEntry.MAX_ACTIVATION_AMOUNT, entry.activation().amount());
+        assertEquals(RespawnEntry.MAX_DELAY_TICKS, summon.delayTicks());
+        assertEquals(RespawnEntry.MAX_PLAYER_RANGE, summon.playerRange());
+        assertEquals(RespawnEntry.MAX_COUNT, summon.count());
+        assertArrayEquals(new int[]{RespawnEntry.MAX_SPAWN_OFFSET, -RespawnEntry.MAX_SPAWN_OFFSET, 0},
+                summon.spawnOffset());
+        assertEquals(RespawnEntry.MAX_ATTEMPTS, summon.maxAttempts());
+        assertEquals(RespawnEntry.MAX_RETRY_INTERVAL_TICKS, summon.retryIntervalTicks());
+        assertEquals(RespawnEntry.MAX_DUPLICATE_RADIUS, entry.duplicate().searchRadius());
+    }
+
+    @Test
     @DisplayName("an unknown placement.mode is rejected")
     void invalidModeIsRejected() {
         assertTrue(parse(entryWith("""

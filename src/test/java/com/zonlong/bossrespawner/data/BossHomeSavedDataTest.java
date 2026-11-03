@@ -365,6 +365,73 @@ class BossHomeSavedDataTest {
         assertFalse(data.isReadOnly());
     }
 
+    @Test
+    @DisplayName("the cross-chunk cage index round-trips and finds cages in unloaded chunks")
+    void cageIndexRoundTrips() {
+        BossHomeSavedData data = new BossHomeSavedData();
+        data.addCage(OVERWORLD.location(), WARDEN, new BlockPos(0, 64, 0));
+        data.addCage(OVERWORLD.location(), WARDEN, new BlockPos(40, 64, 0));
+        data.addCage(NETHER.location(), WARDEN, new BlockPos(0, 64, 0));
+
+        assertEquals(3, data.cageCount());
+        assertTrue(data.hasCageNear(OVERWORLD.location(), WARDEN, new BlockPos(0, 64, 0), 16));
+        assertTrue(data.hasCageNear(OVERWORLD.location(), WARDEN, new BlockPos(40, 64, 0), 1));
+        assertFalse(data.hasCageNear(OVERWORLD.location(), WARDEN, new BlockPos(200, 64, 0), 16));
+        assertFalse(data.hasCageNear(NETHER.location(), WARDEN, new BlockPos(200, 64, 0), 16));
+
+        CompoundTag saved = data.save(new CompoundTag(), RegistryAccess.EMPTY);
+        BossHomeSavedData loaded = BossHomeSavedData.load(saved, RegistryAccess.EMPTY);
+        assertEquals(3, loaded.cageCount());
+        assertTrue(loaded.hasCageNear(OVERWORLD.location(), WARDEN, new BlockPos(40, 64, 0), 1));
+
+        data.removeCage(OVERWORLD.location(), WARDEN, new BlockPos(0, 64, 0));
+        assertEquals(2, data.cageCount());
+        assertFalse(data.hasCageNear(OVERWORLD.location(), WARDEN, new BlockPos(0, 64, 0), 1));
+    }
+
+    @Test
+    @DisplayName("a read-only save refuses every in-memory mutation, not just the final write")
+    void readOnlyRefusesMutations() {
+        CompoundTag tag = new CompoundTag();
+        tag.putInt("dataVersion", BossHomeSavedData.DATA_VERSION + 1);
+        BossHomeSavedData data = BossHomeSavedData.load(tag, RegistryAccess.EMPTY);
+        assertTrue(data.isReadOnly());
+
+        UUID uuid = UUID.randomUUID();
+        assertFalse(data.registerIfAbsent(home(uuid, BlockPos.ZERO)));
+        data.registerOrReplace(home(uuid, new BlockPos(1, 64, 1)));
+        assertFalse(data.contains(uuid));
+        data.addCage(OVERWORLD.location(), WARDEN, BlockPos.ZERO);
+        assertEquals(0, data.cageCount());
+        assertNull(data.enqueuePendingPlacement(
+                task(OVERWORLD, BlockPos.ZERO, uuid, null, RespawnRuleSnapshot.of(defaultEntry()))));
+        assertEquals(0, data.pendingCount());
+        assertFalse(data.remove(uuid));
+    }
+
+    @Test
+    @DisplayName("old snapshots with missing optional placement fields use the JSON defaults")
+    void oldSnapshotPlacementDefaults() {
+        RespawnRuleSnapshot full = RespawnRuleSnapshot.of(defaultEntry());
+        CompoundTag tag = full.toTag();
+        CompoundTag placement = tag.getCompound("Placement");
+        placement.remove("SearchFailureFallback");
+        placement.remove("RequireGround");
+        placement.remove("SearchDown");
+        placement.remove("SearchUp");
+        placement.remove("HorizontalRadius");
+        placement.remove("Offset");
+        tag.put("Placement", placement);
+
+        RespawnRuleSnapshot loaded = RespawnRuleSnapshot.fromTag(tag);
+        assertTrue(loaded.placement().searchFailureFallback());
+        assertTrue(loaded.placement().requireGround());
+        assertEquals(32, loaded.placement().searchDown());
+        assertEquals(16, loaded.placement().searchUp());
+        assertEquals(4, loaded.placement().horizontalRadius());
+        assertArrayEquals(new int[]{0, 0, 0}, loaded.placement().offset());
+    }
+
     // ------------------------------------------------------------------ field-wise assertions
     // The rule records embed int[] fields, so record equals() is identity based. Compare field-wise.
 

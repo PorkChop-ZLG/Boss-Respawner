@@ -73,8 +73,8 @@ public record RespawnRuleSnapshot(
     private static RespawnEntry.ActivationRule activationFromTag(CompoundTag tag) {
         return new RespawnEntry.ActivationRule(
                 BossHomeNbt.getResourceLocation(tag, "Item"),
-                Math.max(1, BossHomeNbt.requireInt(tag, "Amount")),
-                tag.getBoolean("Consume"));
+                tag.contains("Amount", Tag.TAG_INT) ? tag.getInt("Amount") : 1,
+                !tag.contains("Consume", Tag.TAG_BYTE) || tag.getBoolean("Consume"));
     }
 
     // ------------------------------------------------------------------ placement
@@ -104,13 +104,15 @@ public record RespawnRuleSnapshot(
         }
         return new RespawnEntry.PlacementRule(
                 mode,
-                BossHomeNbt.getIntArray3(tag, "Offset"),
+                tag.contains("Offset", Tag.TAG_INT_ARRAY)
+                        ? BossHomeNbt.getIntArray3(tag, "Offset")
+                        : new int[]{0, 0, 0},
                 tag.getBoolean("ForcePlace"),
-                tag.getBoolean("SearchFailureFallback"),
-                BossHomeNbt.requireInt(tag, "SearchDown"),
-                BossHomeNbt.requireInt(tag, "SearchUp"),
-                BossHomeNbt.requireInt(tag, "HorizontalRadius"),
-                tag.getBoolean("RequireGround"),
+                !tag.contains("SearchFailureFallback", Tag.TAG_BYTE) || tag.getBoolean("SearchFailureFallback"),
+                tag.contains("SearchDown", Tag.TAG_INT) ? tag.getInt("SearchDown") : 32,
+                tag.contains("SearchUp", Tag.TAG_INT) ? tag.getInt("SearchUp") : 16,
+                tag.contains("HorizontalRadius", Tag.TAG_INT) ? tag.getInt("HorizontalRadius") : 4,
+                !tag.contains("RequireGround", Tag.TAG_BYTE) || tag.getBoolean("RequireGround"),
                 tag.getBoolean("AvoidFluids"),
                 parseIds(BossHomeNbt.getStringList(tag, "AvoidBlocks")),
                 // Absent in snapshots written before schema v3, where no delay existed.
@@ -210,16 +212,18 @@ public record RespawnRuleSnapshot(
 
         CompoundTag s = requireCompound(tag, "Summon");
         return new RespawnEntry.SpawnRule(mode, new RespawnEntry.SummonRule(
-                BossHomeNbt.requireInt(s, "DelayTicks"),
-                s.getBoolean("RequirePlayerNearby"),
-                s.getDouble("PlayerRange"),
+                s.contains("DelayTicks", Tag.TAG_INT) ? s.getInt("DelayTicks") : 20,
+                !s.contains("RequirePlayerNearby", Tag.TAG_BYTE) || s.getBoolean("RequirePlayerNearby"),
+                s.contains("PlayerRange", Tag.TAG_DOUBLE) ? s.getDouble("PlayerRange") : 9.0D,
                 s.getBoolean("AllowPeaceful"),
-                BossHomeNbt.requireInt(s, "Count"),
-                BossHomeNbt.getIntArray3(s, "SpawnOffset"),
+                s.contains("Count", Tag.TAG_INT) ? s.getInt("Count") : 1,
+                s.contains("SpawnOffset", Tag.TAG_INT_ARRAY)
+                        ? BossHomeNbt.getIntArray3(s, "SpawnOffset")
+                        : new int[]{0, 0, 0},
                 s.getString("Nbt"),
-                s.getBoolean("FinalizeSpawn"),
-                BossHomeNbt.requireInt(s, "MaxAttempts"),
-                BossHomeNbt.requireInt(s, "RetryIntervalTicks")), null);
+                !s.contains("FinalizeSpawn", Tag.TAG_BYTE) || s.getBoolean("FinalizeSpawn"),
+                s.contains("MaxAttempts", Tag.TAG_INT) ? s.getInt("MaxAttempts") : 20,
+                s.contains("RetryIntervalTicks", Tag.TAG_INT) ? s.getInt("RetryIntervalTicks") : 4), null);
     }
 
     /** A snapshot with a missing mode object is unusable, so the whole task is reported as malformed. */
@@ -248,6 +252,6 @@ public record RespawnRuleSnapshot(
     private static RespawnEntry.DuplicateRule duplicateFromTag(CompoundTag tag) {
         return new RespawnEntry.DuplicateRule(
                 BossHomeNbt.requireString(tag, "Mode"),
-                BossHomeNbt.requireInt(tag, "SearchRadius"));
+                tag.contains("SearchRadius", Tag.TAG_INT) ? tag.getInt("SearchRadius") : 16);
     }
 }

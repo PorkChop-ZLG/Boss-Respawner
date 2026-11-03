@@ -8,7 +8,7 @@ import net.neoforged.neoforge.common.ModConfigSpec;
  * Common (server-visible) configuration for the mod.
  *
  * <p>Placement and compatibility policy lives in the data-driven JSON rules; the common config only keeps
- * the master switch, the client-side highlight settings and one non-negotiable safety floor.
+ * the master switch, the client-side highlight settings and the debug switch.
  */
 public final class Config {
     public static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();

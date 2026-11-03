@@ -1,5 +1,6 @@
 package com.zonlong.bossrespawner.event;
 
+import com.zonlong.bossrespawner.Config;
 import com.zonlong.bossrespawner.DebugLog;
 import com.zonlong.bossrespawner.data.BossHomeSavedData;
 import com.zonlong.bossrespawner.data.PendingPlacementTask;
@@ -121,6 +122,10 @@ public final class PendingPlacementService {
 
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
+        if (!Config.ENABLE_MOD.getAsBoolean()) {
+            // Keep queued tasks untouched. Re-enabling resumes via the periodic sweep.
+            return;
+        }
         MinecraftServer server = event.getServer();
         // Delayed placements have a tick deadline, so they need a per-tick check: the 100-tick sweep would
         // overshoot a death animation by seconds. This is cheap because the queue is empty on almost every

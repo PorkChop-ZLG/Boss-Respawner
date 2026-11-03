@@ -6,6 +6,7 @@ import com.zonlong.bossrespawner.UniversalBossRespawner;
 import com.zonlong.bossrespawner.block.BossRespawnerBlock;
 import com.zonlong.bossrespawner.data.BossHomeSavedData;
 import com.zonlong.bossrespawner.data.HomeRecord;
+import com.zonlong.bossrespawner.data.RespawnEntry;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -18,6 +19,7 @@ import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.AnimationState;
 import net.minecraft.world.entity.Entity;
@@ -27,6 +29,7 @@ import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.Container;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -35,9 +38,11 @@ import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.event.EventHooks;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import javax.annotation.Nullable;
 
 public class BossRespawnerBlockEntity extends BlockEntity {
@@ -48,12 +53,16 @@ public class BossRespawnerBlockEntity extends BlockEntity {
     private static final String TAG_SPAWN_RULE = "SpawnRule";
     private static final String TAG_LIT_TICKS = "LitTicks";
     private static final String TAG_ATTEMPTS = "Attempts";
+    private static final String TAG_RETRY_COOLDOWN = "RetryCooldown";
     private static final String TAG_SPAWNED = "Spawned";
     private static final String TAG_HOME_DIMENSION = "HomeDimension";
     private static final String TAG_HOME_POS = "HomePos";
     private static final String TAG_HOME_X = "X";
     private static final String TAG_HOME_Y = "Y";
     private static final String TAG_HOME_Z = "Z";
+    private static final String TAG_PAYMENT_PLAYER = "PaymentPlayer";
+    private static final String TAG_PAYMENT_ITEM = "PaymentItem";
+    private static final String TAG_PAYMENT_AMOUNT = "PaymentAmount";
 
     private String entityTypeId = "";
     private String keyItemId = "";
@@ -114,7 +123,11 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         ANCHOR_NOT_LOADED,
         ANCHOR_OCCUPIED,
         TARGET_NOT_LOADED,
-        TARGET_OCCUPIED
+        TARGET_OCCUPIED,
+        MISSING_ENTITY,
+        MISSING_KEY,
+        SET_BLOCK_FAILED,
+        WRONG_DIMENSION
     }
 
     private TransformFailure lastTransformFailure = TransformFailure.NONE;
@@ -136,7 +149,18 @@ public class BossRespawnerBlockEntity extends BlockEntity {
 
     private int litTicks = 0;
     private int attempts = 0;
+    private int retryCooldown = 0;
     private boolean spawned = false;
+
+    /**
+     * The key items removed when this cage was activated, so a later failure can refund them instead of
+     * silently keeping the player's payment. Persisted because the cage can be unloaded or the server can
+     * restart between activation and retry exhaustion.
+     */
+    @Nullable
+    private UUID paymentPlayer;
+    private String paymentItemId = "";
+    private int paymentAmount;
 
     /**
      * Original home anchor this cage was created from, in home mode. {@code null} for death-mode cages and
@@ -154,6 +178,16 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         super(com.zonlong.bossrespawner.init.ModBlockEntities.BOSS_RESPAWNER.get(), pos, state);
     }
 
+    /**
+     * A cage's NBT controls which entity it revives, its transform target and its spawn NBT. Vanilla applies
+     * an item's {@code block_entity_data} component for non-ops unless the block entity opts out; command
+     * blocks and spawners opt out, and this cage must too.
+     */
+    @Override
+    public boolean onlyOpCanSetNbt() {
+        return true;
+    }
+
     public static void tick(Level level, BlockPos pos, BlockState state, BossRespawnerBlockEntity be) {
         // Only tick while lit. Unlit cages do no gameplay work.
         if (!state.getValue(BossRespawnerBlock.LIT)) {
@@ -164,8 +198,18 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         if (be.spawned || level.isClientSide) {
             return;
         }
+        if (!Config.ENABLE_MOD.getAsBoolean()) {
+            // The master switch must stop existing lit cages too, not just new deaths. The litTicks state is
+            // kept so re-enabling resumes exactly where the cage was.
+            return;
+        }
 
         be.litTicks++;
+        if (be.retryCooldown > 0) {
+            be.retryCooldown--;
+            be.setChanged();
+            return;
+        }
         if (be.litTicks < be.delayTicks) {
             return;
         }
@@ -179,6 +223,9 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         }
 
         if (level.getDifficulty() == Difficulty.PEACEFUL && !be.allowPeaceful) {
+            // The activation pre-check should have caught this, but the difficulty can change during the
+            // countdown. Reset (and refund) rather than leaving the cage lit forever with the player's keys.
+            be.resetToUnlit((ServerLevel) level, pos);
             return;
         }
         if (be.requirePlayerNearby && !be.anyPlayerInRange(level)) {
@@ -190,6 +237,7 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                 pos, be.entityTypeId, be.attempts, be.maxAttempts);
         if (be.trySpawn((ServerLevel) level, pos)) {
             be.spawned = true;
+            be.clearPayment();
             DebugLog.info("Spawn succeeded from respawner at {}: entity={}; destroying cage", pos, be.entityTypeId);
             level.destroyBlock(pos, false);
         } else {
@@ -199,10 +247,13 @@ public class BossRespawnerBlockEntity extends BlockEntity {
             if (be.maxAttempts > 0 && be.attempts >= be.maxAttempts) {
                 be.resetAfterMaxAttempts((ServerLevel) level);
             } else {
-                // Reuse litTicks as a countdown for the next retry.
-                be.litTicks = Math.max(0, be.delayTicks - be.retryIntervalTicks);
+                // Keep the delay gate satisfied and wait an explicit cooldown. The old
+                // `litTicks = delayTicks - retryIntervalTicks` formula collapsed to "retry every tick" when
+                // retryIntervalTicks >= delayTicks (including the legal delay_ticks: 0).
+                be.litTicks = be.delayTicks;
+                be.retryCooldown = Math.max(1, be.retryIntervalTicks);
                 be.setChanged();
-                DebugLog.info("Scheduled retry for respawner at {}: next attempts in {} ticks",
+                DebugLog.info("Scheduled retry for respawner at {}: next attempt in {} ticks",
                         pos, Math.max(1, be.retryIntervalTicks));
             }
         }
@@ -229,6 +280,81 @@ public class BossRespawnerBlockEntity extends BlockEntity {
     }
 
     /**
+     * Records what was just removed from the player's inventory. The record survives a reset/retry and is
+     * refunded if the cage can no longer produce the boss.
+     */
+    public void recordPayment(Player player, Item item, int amount) {
+        if (player == null || item == null || item == Items.AIR || amount <= 0) {
+            clearPayment();
+            return;
+        }
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+        if (itemId == null) {
+            clearPayment();
+            return;
+        }
+        this.paymentPlayer = player.getUUID();
+        this.paymentItemId = itemId.toString();
+        this.paymentAmount = Math.min(RespawnEntry.MAX_ACTIVATION_AMOUNT, amount);
+        setChanged();
+        DebugLog.info("Recorded payment for respawner at {}: player={} item={} amount={}",
+                worldPosition, paymentPlayer, paymentItemId, paymentAmount);
+    }
+
+    public void clearPayment() {
+        if (paymentPlayer == null && paymentAmount == 0 && paymentItemId.isEmpty()) {
+            return;
+        }
+        paymentPlayer = null;
+        paymentItemId = "";
+        paymentAmount = 0;
+        setChanged();
+    }
+
+    /**
+     * Refunds a recorded payment when this cage is removed by {@code replace_existing}, before the new cage
+     * is written. Safe to call when there is no payment.
+     */
+    public void refundPaymentOnRemoval(ServerLevel level) {
+        if (paymentAmount > 0) {
+            refundPayment(level, worldPosition);
+        }
+    }
+
+    private void refundPayment(ServerLevel level, BlockPos pos) {
+        UUID playerId = paymentPlayer;
+        String itemId = paymentItemId;
+        int amount = paymentAmount;
+        clearPayment();
+        if (playerId == null || itemId.isEmpty() || amount <= 0) {
+            return;
+        }
+        ResourceLocation id = ResourceLocation.tryParse(itemId);
+        Item item = id == null ? null : BuiltInRegistries.ITEM.getOptional(id).orElse(null);
+        if (item == null || item == Items.AIR) {
+            UniversalBossRespawner.LOGGER.warn(
+                    "Cannot refund {} x {} at {}: item is no longer registered", amount, itemId, pos);
+            return;
+        }
+        ItemStack refund = new ItemStack(item, amount);
+        ServerPlayer player = level.getServer() == null
+                ? null
+                : level.getServer().getPlayerList().getPlayer(playerId);
+        if (player != null) {
+            if (!player.getInventory().add(refund)) {
+                player.drop(refund, false);
+            }
+            player.displayClientMessage(
+                    Component.translatable("boss_respawner.message.key_refunded", amount, item.getDescription()), false);
+            DebugLog.info("Refunded {} x {} to player {} at {}", amount, itemId, playerId, pos);
+            return;
+        }
+        Block.popResource(level, pos, refund);
+        DebugLog.info("Dropped refund of {} x {} at {} (player {} offline)",
+                amount, itemId, pos, playerId);
+    }
+
+    /**
      * Starts the revival. Called on the server only, and only after the key items have been verified.
      *
      * <p>Both modes do the same thing here: light up and let the opening animation play. The difference
@@ -239,6 +365,9 @@ public class BossRespawnerBlockEntity extends BlockEntity {
      */
     public boolean activate(Level level) {
         lastTransformFailure = TransformFailure.NONE;
+        if (!Config.ENABLE_MOD.getAsBoolean()) {
+            return false;
+        }
         if (!level.getBlockState(worldPosition).hasProperty(BossRespawnerBlock.LIT)) {
             return false;
         }
@@ -246,13 +375,40 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         if (!transformBlockId.isEmpty() && !canTransform(level)) {
             return false;
         }
+        if (transformBlockId.isEmpty()) {
+            if (level.getDifficulty() == Difficulty.PEACEFUL && !allowPeaceful) {
+                lastTransformFailure = TransformFailure.PEACEFUL;
+                DebugLog.info("Respawner at {} will not summon: Peaceful difficulty and allow_peaceful is false",
+                        worldPosition);
+                return false;
+            }
+            if (getCachedEntityType() == null) {
+                lastTransformFailure = TransformFailure.MISSING_ENTITY;
+                UniversalBossRespawner.LOGGER.warn(
+                        "Respawner at {} refers to unregistered entity '{}'; refusing activation",
+                        worldPosition, entityTypeId);
+                return false;
+            }
+            if (getCachedKeyItem() == null) {
+                lastTransformFailure = TransformFailure.MISSING_KEY;
+                UniversalBossRespawner.LOGGER.warn(
+                        "Respawner at {} refers to unregistered key item '{}'; refusing activation",
+                        worldPosition, keyItemId);
+                return false;
+            }
+        }
 
         DebugLog.info("Activating respawner at {}: mode={} entity={} key={} delay={} maxAttempts={}",
                 worldPosition, transformBlockId.isEmpty() ? "summon" : "transform",
                 entityTypeId, keyItemId, delayTicks, maxAttempts);
-        level.setBlock(worldPosition, level.getBlockState(worldPosition).setValue(BossRespawnerBlock.LIT, true), 2);
+        if (!level.setBlock(worldPosition,
+                level.getBlockState(worldPosition).setValue(BossRespawnerBlock.LIT, true), 2)) {
+            lastTransformFailure = TransformFailure.SET_BLOCK_FAILED;
+            return false;
+        }
         litTicks = 0;
         attempts = 0;
+        retryCooldown = 0;
         setChanged();
         level.blockEvent(worldPosition, level.getBlockState(worldPosition).getBlock(), 1, 0);
         return true;
@@ -291,6 +447,14 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                     "Respawner at {} is configured to place its target block at the home anchor, but "
                             + "carries no anchor; leaving the cage in place",
                     worldPosition);
+            return false;
+        }
+        if (!homeDimension.equals(level.dimension())) {
+            lastTransformFailure = TransformFailure.WRONG_DIMENSION;
+            UniversalBossRespawner.LOGGER.warn(
+                    "Respawner at {} carries a home anchor in {} but is in {}; refusing to touch the wrong "
+                            + "dimension's blocks",
+                    worldPosition, homeDimension.location(), level.dimension().location());
             return false;
         }
 
@@ -387,10 +551,20 @@ public class BossRespawnerBlockEntity extends BlockEntity {
      * @return {@code true} when the cage was replaced
      */
     private boolean finishTransform(ServerLevel level, BlockPos pos) {
+        if (transformAtAnchor && hasHomeAnchor() && !homeDimension.equals(level.dimension())) {
+            lastTransformFailure = TransformFailure.WRONG_DIMENSION;
+            UniversalBossRespawner.LOGGER.warn(
+                    "Respawner at {} carries a home anchor in {} but is in {}; resetting without touching "
+                            + "blocks in the wrong dimension",
+                    pos, homeDimension.location(), level.dimension().location());
+            resetToUnlit(level, pos);
+            return false;
+        }
         Block block = resolveTransformBlock();
         if (block == null) {
             // The rule changed under us, or the target mod went away. Reset rather than leave the cage lit
-            // forever; the key items are not refunded, because the rule itself is what is broken.
+            // forever; resetToUnlit refunds the recorded key payment.
+            lastTransformFailure = TransformFailure.BLOCK_MISSING;
             UniversalBossRespawner.LOGGER.warn(
                     "Respawner at {} could not transform: block '{}' is unavailable; resetting the cage",
                     pos, transformBlockId);
@@ -405,6 +579,9 @@ public class BossRespawnerBlockEntity extends BlockEntity {
             if (transformAtAnchor && hasHomeAnchor()
                     && !homePos.equals(pos) && !homePos.equals(targetPos)) {
                 if (!level.isLoaded(homePos) || !isReplaceableOrAllowedChest(level, homePos)) {
+                    lastTransformFailure = level.isLoaded(homePos)
+                            ? TransformFailure.ANCHOR_OCCUPIED
+                            : TransformFailure.ANCHOR_NOT_LOADED;
                     UniversalBossRespawner.LOGGER.warn(
                             "Respawner at {} could not transform: home anchor {} is not available; "
                                     + "resetting the cage", pos, homePos);
@@ -417,6 +594,9 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                 }
             }
             if (!level.isLoaded(targetPos) || !isReplaceableOrAllowedChest(level, targetPos)) {
+                lastTransformFailure = level.isLoaded(targetPos)
+                        ? TransformFailure.TARGET_OCCUPIED
+                        : TransformFailure.TARGET_NOT_LOADED;
                 UniversalBossRespawner.LOGGER.warn(
                         "Respawner at {} could not transform: target {} is not available; resetting the cage",
                         pos, targetPos);
@@ -433,7 +613,14 @@ public class BossRespawnerBlockEntity extends BlockEntity {
 
         DebugLog.info("Transforming respawner at {} into {} at {} for entity={}",
                 pos, block, targetPos, entityTypeId);
-        level.setBlock(targetPos, block.defaultBlockState(), Block.UPDATE_ALL);
+        if (!level.setBlock(targetPos, block.defaultBlockState(), Block.UPDATE_ALL)) {
+            lastTransformFailure = TransformFailure.SET_BLOCK_FAILED;
+            UniversalBossRespawner.LOGGER.warn(
+                    "Respawner at {} could not transform: setBlock({}) was rejected; resetting the cage",
+                    pos, targetPos);
+            resetToUnlit(level, pos);
+            return false;
+        }
 
         if (!transformNbt.isEmpty()) {
             BlockEntity target = level.getBlockEntity(targetPos);
@@ -442,25 +629,34 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                         "Respawner at {} transformed into {}, which has no block entity; ignoring nbt",
                         targetPos, block);
             } else {
-                // The trailing tag of a /setblock command, in effect.
-                target.loadWithComponents(transformNbt, level.registryAccess());
-                target.setChanged();
-                BlockState state = level.getBlockState(targetPos);
-                level.sendBlockUpdated(targetPos, state, state, Block.UPDATE_ALL);
+                try {
+                    // The trailing tag of a /setblock command, in effect.
+                    target.loadWithComponents(transformNbt, level.registryAccess());
+                    target.setChanged();
+                    BlockState state = level.getBlockState(targetPos);
+                    level.sendBlockUpdated(targetPos, state, state, Block.UPDATE_ALL);
+                } catch (Exception e) {
+                    // The block is already in place; a malformed tag must not escape from the block-entity tick.
+                    UniversalBossRespawner.LOGGER.warn(
+                            "Failed to apply transform nbt at {}: {}", targetPos, e.toString());
+                }
             }
         }
 
+        clearPayment();
         return true;
     }
 
     /** Returns the cage to its unlit, reusable state without touching whatever else it was holding. */
     private void resetToUnlit(ServerLevel level, BlockPos pos) {
+        refundPayment(level, pos);
         BlockState state = level.getBlockState(pos);
         if (state.hasProperty(BossRespawnerBlock.LIT)) {
             level.setBlock(pos, state.setValue(BossRespawnerBlock.LIT, false), 2);
         }
         litTicks = 0;
         attempts = 0;
+        retryCooldown = 0;
         spawned = false;
         setChanged();
     }
@@ -476,7 +672,7 @@ public class BossRespawnerBlockEntity extends BlockEntity {
     public void setIdentity(String entityTypeId, String keyItemId, int keyAmount, boolean consumeKeyItem) {
         this.entityTypeId = entityTypeId == null ? "" : entityTypeId;
         this.keyItemId = keyItemId == null ? "" : keyItemId;
-        this.keyAmount = Math.max(1, keyAmount);
+        this.keyAmount = Math.min(RespawnEntry.MAX_ACTIVATION_AMOUNT, Math.max(1, keyAmount));
         this.consumeKeyItem = consumeKeyItem;
         invalidateCaches();
         setChanged();
@@ -493,7 +689,7 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                              int[] spawnerOffset, boolean forcePlace, boolean atAnchor) {
         this.transformBlockId = block == null ? "" : block.toString();
         this.transformNbt = nbt == null ? new CompoundTag() : nbt.copy();
-        this.delayTicks = Math.max(0, delayTicks);
+        this.delayTicks = Math.min(RespawnEntry.MAX_DELAY_TICKS, Math.max(0, delayTicks));
         this.allowPeaceful = allowPeaceful;
         this.spawnerOffset = normalizeOffset(spawnerOffset);
         this.transformForcePlace = forcePlace;
@@ -558,11 +754,29 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                 // tag teleports the entity to (0, 0, 0). Applying the NBT first and the position second
                 // keeps the cage position authoritative, which is what spawn_offset is for.
                 if (!spawnNbt.isEmpty()) {
-                    entity.load(spawnNbt);
+                    // A new boss must get a fresh UUID. Copying a UUID from /data get entity would make
+                    // bindHomeAnchor overwrite the real boss's home and addFreshEntity reject the duplicate.
+                    CompoundTag toLoad = spawnNbt.copy();
+                    toLoad.remove("UUID");
+                    entity.load(toLoad);
                 }
                 entity.setPos(spawnPos);
-                if (entity instanceof Mob mob && finalizeSpawn) {
-                    mob.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(pos), MobSpawnType.SPAWNER, null);
+                if (entity instanceof Mob mob) {
+                    if (finalizeSpawn) {
+                        // Fire FinalizeSpawnEvent instead of calling Mob.finalizeSpawn directly. Mods use
+                        // this event for attributes, equipment, boss bars and spawn cancellation.
+                        EventHooks.finalizeMobSpawn(mob, serverLevel,
+                                serverLevel.getCurrentDifficultyAt(entity.blockPosition()),
+                                MobSpawnType.SPAWNER, null);
+                    }
+                    // A respawned boss must not despawn while the player is away.
+                    mob.setPersistenceRequired();
+                }
+                if (entity instanceof Mob mob && mob.isSpawnCancelled()) {
+                    DebugLog.info("trySpawn aborted: {} cancelled by FinalizeSpawnEvent", entityTypeId);
+                    discardAll(created);
+                    releaseHomeAnchors(serverLevel, created);
+                    return false;
                 }
                 // Bind the new UUID to the original home *before* the entity joins the level. The
                 // EntityJoinLevelEvent hook registers on a "first observation wins" basis, so writing the
@@ -573,8 +787,9 @@ public class BossRespawnerBlockEntity extends BlockEntity {
             }
 
             for (Entity entity : created) {
-                if (!serverLevel.addFreshEntity(entity)) {
-                    DebugLog.info("trySpawn failed: addFreshEntity rejected entity {} for {}", entity, entityTypeId);
+                if (!serverLevel.tryAddFreshEntityWithPassengers(entity)) {
+                    DebugLog.info("trySpawn failed: tryAddFreshEntityWithPassengers rejected entity {} for {}",
+                            entity, entityTypeId);
                     discardAll(created);
                     // The provisional registrations must not survive a failed spawn.
                     releaseHomeAnchors(serverLevel, created);
@@ -625,6 +840,12 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         if (!hasHomeAnchor()) {
             return;
         }
+        if (!homeDimension.equals(serverLevel.dimension())) {
+            UniversalBossRespawner.LOGGER.warn(
+                    "Not binding spawned entity {} to home anchor {} in {}: cage is in {}",
+                    entity.getUUID(), homePos, homeDimension.location(), serverLevel.dimension().location());
+            return;
+        }
         ResourceLocation typeId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
         if (typeId == null) {
             return;
@@ -660,8 +881,10 @@ public class BossRespawnerBlockEntity extends BlockEntity {
     private void resetAfterMaxAttempts(ServerLevel level) {
         DebugLog.info("Resetting respawner after max attempts at {}: entity={} attempts={} maxAttempts={}",
                 worldPosition, entityTypeId, attempts, maxAttempts);
+        refundPayment(level, worldPosition);
         attempts = 0;
         litTicks = 0;
+        retryCooldown = 0;
 
         BlockState state = level.getBlockState(worldPosition);
         if (state.hasProperty(BossRespawnerBlock.LIT)) {
@@ -688,18 +911,19 @@ public class BossRespawnerBlockEntity extends BlockEntity {
                                boolean finalizeSpawn, int maxAttempts, int retryIntervalTicks) {
         this.entityTypeId = entityTypeId == null ? "" : entityTypeId;
         this.keyItemId = keyItemId == null ? "" : keyItemId;
-        this.keyAmount = Math.max(1, keyAmount);
+        this.keyAmount = Math.min(RespawnEntry.MAX_ACTIVATION_AMOUNT, Math.max(1, keyAmount));
         this.consumeKeyItem = consumeKeyItem;
         this.spawnNbt = spawnNbt == null ? new CompoundTag() : spawnNbt.copy();
-        this.delayTicks = Math.max(0, delayTicks);
+        this.delayTicks = Math.min(RespawnEntry.MAX_DELAY_TICKS, Math.max(0, delayTicks));
         this.requirePlayerNearby = requirePlayerNearby;
-        this.playerRange = Math.max(1.0D, playerRange);
+        this.playerRange = Math.max(1.0D, Math.min(RespawnEntry.MAX_PLAYER_RANGE, playerRange));
         this.allowPeaceful = allowPeaceful;
-        this.count = Math.max(1, count);
+        this.count = Math.min(RespawnEntry.MAX_COUNT, Math.max(1, count));
         this.spawnOffset = normalizeOffset(spawnOffset);
         this.finalizeSpawn = finalizeSpawn;
         this.maxAttempts = normalizeMaxAttempts(maxAttempts);
-        this.retryIntervalTicks = Math.max(1, retryIntervalTicks);
+        this.retryIntervalTicks = Math.min(RespawnEntry.MAX_RETRY_INTERVAL_TICKS,
+                Math.max(1, retryIntervalTicks));
         this.litTicks = 0;
         this.attempts = 0;
         this.spawned = false;
@@ -737,7 +961,8 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         if (cachedEntityType == null && !entityTypeId.isEmpty()) {
             entityLocation = parseLocation(entityTypeId);
             if (entityLocation != null) {
-                cachedEntityType = BuiltInRegistries.ENTITY_TYPE.get(entityLocation);
+                // DefaultedRegistry#get returns PIG for unknown ids; a boss cage must not silently spawn a pig.
+                cachedEntityType = BuiltInRegistries.ENTITY_TYPE.getOptional(entityLocation).orElse(null);
             }
         }
         return cachedEntityType;
@@ -747,7 +972,9 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         if (cachedItem == null && !keyItemId.isEmpty()) {
             itemLocation = parseLocation(keyItemId);
             if (itemLocation != null) {
-                cachedItem = BuiltInRegistries.ITEM.get(itemLocation);
+                // Same trap as the entity registry: get() would return AIR for an unknown item and
+                // matchesKeyItem(EMPTY) would then be true.
+                cachedItem = BuiltInRegistries.ITEM.getOptional(itemLocation).orElse(null);
             }
         }
         return cachedItem;
@@ -792,7 +1019,8 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         super.loadAdditional(tag, registries);
         this.entityTypeId = tag.getString(TAG_ENTITY_TYPE);
         this.keyItemId = tag.getString(TAG_KEY_ITEM_ID);
-        this.keyAmount = tag.getInt(TAG_KEY_AMOUNT);
+        this.keyAmount = Math.min(RespawnEntry.MAX_ACTIVATION_AMOUNT,
+                Math.max(1, tag.getInt(TAG_KEY_AMOUNT)));
         if (this.keyAmount <= 0) {
             this.keyAmount = 1;
         }
@@ -800,17 +1028,19 @@ public class BossRespawnerBlockEntity extends BlockEntity {
 
         if (tag.contains(TAG_SPAWN_RULE, net.minecraft.nbt.Tag.TAG_COMPOUND)) {
             CompoundTag rule = tag.getCompound(TAG_SPAWN_RULE);
-            this.delayTicks = Math.max(0, rule.getInt("DelayTicks"));
+            this.delayTicks = Math.min(RespawnEntry.MAX_DELAY_TICKS, Math.max(0, rule.getInt("DelayTicks")));
             this.requirePlayerNearby = rule.getBoolean("RequirePlayerNearby");
-            this.playerRange = Math.max(1.0D, rule.getDouble("PlayerRange"));
+            this.playerRange = Math.max(1.0D,
+                    Math.min(RespawnEntry.MAX_PLAYER_RANGE, rule.getDouble("PlayerRange")));
             this.allowPeaceful = rule.getBoolean("AllowPeaceful");
-            this.count = Math.max(1, rule.getInt("Count"));
+            this.count = Math.min(RespawnEntry.MAX_COUNT, Math.max(1, rule.getInt("Count")));
             if (rule.contains("SpawnOffset", net.minecraft.nbt.Tag.TAG_INT_ARRAY)) {
                 this.spawnOffset = normalizeOffset(rule.getIntArray("SpawnOffset"));
             }
             this.finalizeSpawn = rule.getBoolean("FinalizeSpawn");
             this.maxAttempts = normalizeMaxAttempts(rule.getInt("MaxAttempts"));
-            this.retryIntervalTicks = Math.max(1, rule.getInt("RetryIntervalTicks"));
+            this.retryIntervalTicks = Math.min(RespawnEntry.MAX_RETRY_INTERVAL_TICKS,
+                    Math.max(1, rule.getInt("RetryIntervalTicks")));
             if (rule.contains("SpawnNbt", net.minecraft.nbt.Tag.TAG_COMPOUND)) {
                 this.spawnNbt = rule.getCompound("SpawnNbt").copy();
             }
@@ -825,9 +1055,21 @@ public class BossRespawnerBlockEntity extends BlockEntity {
             this.transformForcePlace = rule.getBoolean("ForcePlace");
         }
 
-        this.litTicks = tag.getInt(TAG_LIT_TICKS);
-        this.attempts = tag.getInt(TAG_ATTEMPTS);
+        this.litTicks = Math.max(0, tag.getInt(TAG_LIT_TICKS));
+        this.attempts = Math.max(0, tag.getInt(TAG_ATTEMPTS));
+        this.retryCooldown = Math.min(RespawnEntry.MAX_RETRY_INTERVAL_TICKS,
+                Math.max(0, tag.getInt(TAG_RETRY_COOLDOWN)));
         this.spawned = tag.getBoolean(TAG_SPAWNED);
+
+        this.paymentPlayer = tag.hasUUID(TAG_PAYMENT_PLAYER) ? tag.getUUID(TAG_PAYMENT_PLAYER) : null;
+        this.paymentItemId = tag.getString(TAG_PAYMENT_ITEM);
+        this.paymentAmount = Math.min(RespawnEntry.MAX_ACTIVATION_AMOUNT,
+                Math.max(0, tag.getInt(TAG_PAYMENT_AMOUNT)));
+        if (paymentPlayer == null || paymentItemId.isEmpty() || paymentAmount <= 0) {
+            paymentPlayer = null;
+            paymentItemId = "";
+            paymentAmount = 0;
+        }
 
         // Optional: only home-mode cages written by this version carry an anchor.
         this.homeDimension = null;
@@ -848,6 +1090,15 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         }
 
         invalidateCaches();
+        if (level instanceof ServerLevel serverLevel) {
+            ResourceLocation typeId = ResourceLocation.tryParse(entityTypeId);
+            if (typeId != null) {
+                // Existing cages in old saves become visible to the cross-chunk duplicate index as soon as
+                // their chunk loads.
+                BossHomeSavedData.get(serverLevel).addCage(
+                        serverLevel.dimension().location(), typeId, worldPosition);
+            }
+        }
         DebugLog.info("Loaded respawner data at {}: entity={} key={} litTicks={} attempts={} spawned={} homeAnchor={}",
                 worldPosition, this.entityTypeId, this.keyItemId, this.litTicks, this.attempts, this.spawned,
                 hasHomeAnchor());
@@ -891,7 +1142,14 @@ public class BossRespawnerBlockEntity extends BlockEntity {
 
         tag.putInt(TAG_LIT_TICKS, litTicks);
         tag.putInt(TAG_ATTEMPTS, attempts);
+        tag.putInt(TAG_RETRY_COOLDOWN, retryCooldown);
         tag.putBoolean(TAG_SPAWNED, spawned);
+
+        if (paymentPlayer != null && paymentAmount > 0 && !paymentItemId.isEmpty()) {
+            tag.putUUID(TAG_PAYMENT_PLAYER, paymentPlayer);
+            tag.putString(TAG_PAYMENT_ITEM, paymentItemId);
+            tag.putInt(TAG_PAYMENT_AMOUNT, paymentAmount);
+        }
 
         // Home anchor, only for home-mode cages. Absent for death-mode cages and for cages written by
         // older versions, which then keep their previous behaviour.
@@ -953,7 +1211,12 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         if (offset == null || offset.length != 3) {
             return new int[]{0, 0, 0};
         }
-        return offset.clone();
+        int limit = RespawnEntry.MAX_SPAWN_OFFSET;
+        return new int[]{
+                Math.max(-limit, Math.min(limit, offset[0])),
+                Math.max(-limit, Math.min(limit, offset[1])),
+                Math.max(-limit, Math.min(limit, offset[2]))
+        };
     }
 
     private static int normalizeMaxAttempts(int value) {
@@ -963,6 +1226,6 @@ public class BossRespawnerBlockEntity extends BlockEntity {
         if (value == 0) {
             return 20;
         }
-        return value;
+        return Math.min(RespawnEntry.MAX_ATTEMPTS, value);
     }
 }

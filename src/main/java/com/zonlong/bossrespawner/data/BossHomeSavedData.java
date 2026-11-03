@@ -44,7 +44,8 @@ import java.util.UUID;
  * <p>Two collections are stored:
  * <ul>
  *   <li>{@code homes} — {@code UUID -> HomeRecord}, one entry per observed entity. Entries are consumed
- *       when the entity dies and its cage is successfully placed.</li>
+ *       when the entity dies and its cage is successfully placed, or cleaned up when the placement is
+ *       abandoned and on non-death removal ({@code DISCARDED}).</li>
  *   <li>{@code pending} — deferred placements keyed by placement target, plus a
  *       {@code (dimension, ChunkPos)} index so a chunk-load event costs O(1) instead of scanning the
  *       whole queue.</li>
@@ -61,6 +62,7 @@ public class BossHomeSavedData extends SavedData {
     private static final String TAG_DATA_VERSION = "dataVersion";
     private static final String TAG_HOMES = "homes";
     private static final String TAG_PENDING = "pendingPlacements";
+    private static final String TAG_CAGES = "cagePositions";
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -69,6 +71,13 @@ public class BossHomeSavedData extends SavedData {
 
     private final Map<UUID, HomeRecord> homes = new HashMap<>();
     private final Map<PendingPlacementTask.Key, PendingPlacementTask> pending = new HashMap<>();
+
+    /**
+     * Persistent position index of actual respawn cages. The duplicate check must also see cages in chunks
+     * that are not loaded; scanning BlockEntities alone would miss them and place a second cage across a
+     * chunk border. Entries are added when a cage is written/loaded and removed when its block is removed.
+     */
+    private final Set<CageRecord> cages = new HashSet<>();
 
     /**
      * {@code (dimension, ChunkPos)} -> task keys.
@@ -137,6 +146,9 @@ public class BossHomeSavedData extends SavedData {
      * @return {@code true} when a new record was stored
      */
     public boolean registerIfAbsent(HomeRecord record) {
+        if (readOnly) {
+            return false;
+        }
         if (homes.containsKey(record.entityUuid())) {
             return false;
         }
@@ -151,17 +163,62 @@ public class BossHomeSavedData extends SavedData {
      * original home before the join hook could have written the wrong anchor.
      */
     public void registerOrReplace(HomeRecord record) {
+        if (readOnly) {
+            return;
+        }
         homes.put(record.entityUuid(), record);
         setDirty();
     }
 
     /** @return {@code true} when a record was present and removed */
     public boolean remove(UUID entityUuid) {
+        if (readOnly) {
+            return false;
+        }
         if (homes.remove(entityUuid) == null) {
             return false;
         }
         setDirty();
         return true;
+    }
+
+    // ------------------------------------------------------------------ cage position index
+
+    /** Adds/refreshes one real cage position in the cross-chunk duplicate index. */
+    public void addCage(ResourceLocation dimension, ResourceLocation entityType, BlockPos pos) {
+        if (readOnly) {
+            return;
+        }
+        if (cages.add(new CageRecord(dimension, entityType, pos.asLong()))) {
+            setDirty();
+        }
+    }
+
+    public void removeCage(ResourceLocation dimension, ResourceLocation entityType, BlockPos pos) {
+        if (readOnly) {
+            return;
+        }
+        if (cages.remove(new CageRecord(dimension, entityType, pos.asLong()))) {
+            setDirty();
+        }
+    }
+
+    /** @return true when a cage of {@code entityType} exists within {@code radius} blocks of {@code center} */
+    public boolean hasCageNear(ResourceLocation dimension, ResourceLocation entityType, BlockPos center, int radius) {
+        long radiusSq = (long) radius * radius;
+        for (CageRecord cage : cages) {
+            if (!cage.dimension().equals(dimension) || !cage.entityType().equals(entityType)) {
+                continue;
+            }
+            if (BlockPos.of(cage.pos()).distSqr(center) <= radiusSq) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public int cageCount() {
+        return cages.size();
     }
 
     // ------------------------------------------------------------------ pending placements
@@ -175,6 +232,9 @@ public class BossHomeSavedData extends SavedData {
      * @return the displaced source UUID, or {@code null} when this target had no task yet
      */
     public UUID enqueuePendingPlacement(PendingPlacementTask task) {
+        if (readOnly) {
+            return null;
+        }
         PendingPlacementTask previous = pending.put(task.key(), task);
         index(task);
         setDirty();
@@ -186,6 +246,9 @@ public class BossHomeSavedData extends SavedData {
 
     /** @return {@code true} when a task was present and removed */
     public boolean removePendingPlacement(PendingPlacementTask.Key key) {
+        if (readOnly) {
+            return false;
+        }
         PendingPlacementTask removed = pending.remove(key);
         if (removed == null) {
             return false;
@@ -296,6 +359,12 @@ public class BossHomeSavedData extends SavedData {
         }
         tag.put(TAG_PENDING, pendingTag);
 
+        ListTag cagesTag = new ListTag();
+        for (CageRecord cage : cages) {
+            cagesTag.add(cage.toTag());
+        }
+        tag.put(TAG_CAGES, cagesTag);
+
         return tag;
     }
 
@@ -335,8 +404,17 @@ public class BossHomeSavedData extends SavedData {
             }
         }
 
-        LOGGER.info("Loaded {} home records and {} deferred placements from {}",
-                data.homes.size(), data.pending.size(), FILE_ID);
+        ListTag cagesTag = tag.getList(TAG_CAGES, Tag.TAG_COMPOUND);
+        for (int i = 0; i < cagesTag.size(); i++) {
+            try {
+                data.cages.add(CageRecord.fromTag(cagesTag.getCompound(i)));
+            } catch (Exception e) {
+                LOGGER.warn("Skipping corrupt cage index entry #{} in {}: {}", i, FILE_ID, e.toString());
+            }
+        }
+
+        LOGGER.info("Loaded {} home records, {} deferred placements and {} cage positions from {}",
+                data.homes.size(), data.pending.size(), data.cages.size(), FILE_ID);
         return data;
     }
 
@@ -350,5 +428,29 @@ public class BossHomeSavedData extends SavedData {
     /** @return the chunk position key used by {@link #pendingForChunk} */
     public static long chunkKey(BlockPos pos) {
         return ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4);
+    }
+
+    /** One real cage position, keyed by dimension + entity type + packed position. */
+    public record CageRecord(ResourceLocation dimension, ResourceLocation entityType, long pos) {
+        private static final String TAG_DIMENSION = "Dimension";
+        private static final String TAG_ENTITY_TYPE = "EntityType";
+        private static final String TAG_POS = "Pos";
+
+        public CompoundTag toTag() {
+            CompoundTag tag = new CompoundTag();
+            tag.putString(TAG_DIMENSION, dimension.toString());
+            tag.putString(TAG_ENTITY_TYPE, entityType.toString());
+            tag.putLong(TAG_POS, pos);
+            return tag;
+        }
+
+        public static CageRecord fromTag(CompoundTag tag) {
+            ResourceLocation dimension = ResourceLocation.tryParse(tag.getString(TAG_DIMENSION));
+            ResourceLocation entityType = ResourceLocation.tryParse(tag.getString(TAG_ENTITY_TYPE));
+            if (dimension == null || entityType == null) {
+                throw new IllegalArgumentException("cage index entry has malformed ids");
+            }
+            return new CageRecord(dimension, entityType, tag.getLong(TAG_POS));
+        }
     }
 }

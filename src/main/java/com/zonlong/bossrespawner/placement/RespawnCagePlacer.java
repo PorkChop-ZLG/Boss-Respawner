@@ -192,6 +192,16 @@ public final class RespawnCagePlacer {
             return Outcome.ABANDONED;
         }
 
+        if (level.isOutsideBuildHeight(request.base())) {
+            // isLoaded() is always false outside build height, so deferring would create a task that can
+            // never complete. This is not "the chunk is not loaded"; it is an invalid target.
+            UniversalBossRespawner.LOGGER.warn(
+                    "Respawn cage target {} for {} is outside build height; no cage placed",
+                    request.base(), request.entityTypeId());
+            dropHomeRecord(request);
+            return Outcome.ABANDONED;
+        }
+
         if (!level.isLoaded(request.base())) {
             // Never write here: this path runs from a death event or a chunk-load follow-up, and a write
             // would synchronously generate the chunk.
@@ -216,6 +226,7 @@ public final class RespawnCagePlacer {
                         "No safe placement position for {} near {} and search_failure_fallback is false; "
                                 + "no respawn cage placed",
                         request.entityTypeId(), request.base());
+                dropHomeRecord(request);
                 return Outcome.ABANDONED;
             }
         }
@@ -236,6 +247,7 @@ public final class RespawnCagePlacer {
                         "Refusing to place the Twilight Forest cage for {} at {}: that cell is the boss's "
                                 + "home or the loot-chest cell",
                         request.entityTypeId(), chosen);
+                dropHomeRecord(request);
                 return Outcome.ABANDONED;
             }
         }
@@ -246,10 +258,12 @@ public final class RespawnCagePlacer {
         }
 
         if (!hasExistingCageConflict(level, chosen, request)) {
+            dropHomeRecord(request);
             return Outcome.ABANDONED;
         }
 
         if (!writeCage(level, chosen, request)) {
+            dropHomeRecord(request);
             return Outcome.ABANDONED;
         }
 
@@ -341,7 +355,9 @@ public final class RespawnCagePlacer {
             return false;
         }
         if (!(level.getBlockEntity(pos) instanceof BossRespawnerBlockEntity be)) {
-            UniversalBossRespawner.LOGGER.warn("Boss respawner block at {} has no BossRespawnerBlockEntity", pos);
+            UniversalBossRespawner.LOGGER.warn("Boss respawner block at {} has no BossRespawnerBlockEntity; "
+                    + "restoring the previous block", pos);
+            level.setBlock(pos, oldState, 2);
             return false;
         }
 
@@ -392,6 +408,9 @@ public final class RespawnCagePlacer {
         }
 
         level.sendBlockUpdated(pos, oldState, newState, 3);
+        // Maintain the cross-chunk duplicate index; the loaded BlockEntity scan alone cannot see this cage
+        // once its chunk unloads.
+        BossHomeSavedData.get(level).addCage(level.dimension().location(), request.entityType(), pos);
         return true;
     }
 
@@ -400,6 +419,13 @@ public final class RespawnCagePlacer {
     private static boolean hasExistingCage(ServerLevel level, BlockPos center, String entityTypeId, int radius) {
         int r = Math.min(radius, 32);
         long radiusSq = (long) r * r;
+
+        ResourceLocation typeId = ResourceLocation.tryParse(entityTypeId);
+        if (typeId != null && BossHomeSavedData.get(level)
+                .hasCageNear(level.dimension().location(), typeId, center, r)) {
+            DebugLog.info("Existing {} respawn cage found in the cross-chunk index near {}", entityTypeId, center);
+            return true;
+        }
 
         for (BlockPos cagePos : existingCagePositions(level, center, entityTypeId, r, radiusSq)) {
             DebugLog.info("Found existing {} respawn cage at {}", entityTypeId, cagePos);
@@ -416,9 +442,17 @@ public final class RespawnCagePlacer {
         // Collect first, then destroy: destroying while iterating the chunk's BlockEntity map would
         // throw ConcurrentModificationException.
         List<BlockPos> toDestroy = existingCagePositions(level, center, entityTypeId, r, radiusSq);
+        ResourceLocation typeId = ResourceLocation.tryParse(entityTypeId);
         for (BlockPos pos : toDestroy) {
             DebugLog.info("Destroying existing {} cage at {}", entityTypeId, pos);
+            if (level.getBlockEntity(pos) instanceof BossRespawnerBlockEntity cage) {
+                // The old cage may have been lit and paid for. Refund before destroyBlock removes its data.
+                cage.refundPaymentOnRemoval(level);
+            }
             level.destroyBlock(pos, false);
+            if (typeId != null) {
+                BossHomeSavedData.get(level).removeCage(level.dimension().location(), typeId, pos);
+            }
         }
     }
 

@@ -1,5 +1,6 @@
 package com.zonlong.bossrespawner.event;
 
+import com.zonlong.bossrespawner.Config;
 import com.zonlong.bossrespawner.DebugLog;
 import com.zonlong.bossrespawner.UniversalBossRespawner;
 import com.zonlong.bossrespawner.data.BossHomeSavedData;
@@ -64,6 +65,9 @@ public final class TwilightSettlementService {
      * defeat, and only the final knight produces a loot chest.
      */
     public static void schedule(ServerLevel level, LivingEntity entity, RespawnEntry entry, String entityTypeId) {
+        if (!Config.ENABLE_MOD.getAsBoolean()) {
+            return;
+        }
         if (entry.placement().mode() != RespawnEntry.PlacementMode.TWILIGHTFOREST) {
             return;
         }

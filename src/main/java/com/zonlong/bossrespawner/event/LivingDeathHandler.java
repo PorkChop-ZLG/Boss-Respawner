@@ -3,6 +3,7 @@ package com.zonlong.bossrespawner.event;
 import com.zonlong.bossrespawner.Config;
 import com.zonlong.bossrespawner.DebugLog;
 import com.zonlong.bossrespawner.UniversalBossRespawner;
+import com.zonlong.bossrespawner.data.BossHomeSavedData;
 import com.zonlong.bossrespawner.data.RespawnEntry;
 import com.zonlong.bossrespawner.data.RespawnRuleManager;
 import com.zonlong.bossrespawner.placement.RespawnCagePlacer;
@@ -29,12 +30,14 @@ public final class LivingDeathHandler {
         if (event.isCanceled()) {
             return;
         }
-        if (!Config.ENABLE_MOD.getAsBoolean()) {
-            return;
-        }
 
         LivingEntity entity = event.getEntity();
         if (entity.level().isClientSide || !(entity.level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        if (!Config.ENABLE_MOD.getAsBoolean()) {
+            // The master switch disables placement, not the cleanup of a dead entity's now-useless record.
+            BossHomeSavedData.get(serverLevel).remove(entity.getUUID());
             return;
         }
 
@@ -47,9 +50,10 @@ public final class LivingDeathHandler {
         RespawnEntry entry = RespawnRuleManager.INSTANCE.find(entity.getType());
         if (entry == null) {
             if (DebugLog.isEnabled()) {
-                DebugLog.info("No respawn rule found for entityId={}; manager currently has {} mapped entries",
-                        entityId, RespawnRuleManager.INSTANCE.getByEntity().size());
+                DebugLog.info("No respawn rule found for entityId={}; dropping its home record (if any)",
+                        entityId);
             }
+            BossHomeSavedData.get(serverLevel).remove(entity.getUUID());
             return;
         }
 
@@ -62,6 +66,9 @@ public final class LivingDeathHandler {
                 DebugLog.info("Death conditions not met for entityId={} rule={} (playerKillOnly={}, dimensions={}, biomes={})",
                         entityId, entry.id(), entry.death().playerKillOnly(), entry.death().dimensions(), entry.death().biomes());
             }
+            // The entity is dead and this death produces no cage. A home record can never be reused by this
+            // UUID, so keeping it would only grow boss_respawner_homes.dat forever.
+            BossHomeSavedData.get(serverLevel).remove(entity.getUUID());
             return;
         }
 
@@ -85,6 +92,9 @@ public final class LivingDeathHandler {
             }
         } catch (Exception e) {
             UniversalBossRespawner.LOGGER.warn("Failed to place {} respawn cage", entityId, e);
+            // The placement pipeline threw before it could consume the record. The entity is dead; keeping
+            // the home would leak it, and there is no cage to hand it to.
+            BossHomeSavedData.get(serverLevel).remove(entity.getUUID());
             if (DebugLog.isEnabled()) {
                 DebugLog.info("Exception while placing respawn cage for entityId={}: {}", entityId, e.toString());
             }
