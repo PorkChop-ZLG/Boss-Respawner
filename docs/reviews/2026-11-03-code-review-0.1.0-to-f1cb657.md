@@ -69,7 +69,7 @@
 - **High 1 已修复**：`README.md:30`、`docs/twilight-forest-mapping.md:210`、B 方案设计正文已改为“8 条 TF 使用 `placement.force_place:true`；`search_failure_fallback:false` 只是保留语义；笼子不压奖励箱靠 TF 锚点硬守卫/偏移；巫妖的 `spawn.transform.force_place` 替换奖励箱格”。
 - **High 2 已闭环**：代码已在 tick/activate/useItemOn/PendingPlacementService/EntityHomeRegistrationHandler/TwilightSettlementService 检查 `Config.ENABLE_MOD`；README、`Config.java` 注释、en_us/zh_cn 的 `enableMod.tooltip` 已改为“关闭停止新放置/召唤；已点亮笼子和排队任务暂停，重新开启继续”。
 - **High 3 已记录取舍**：README v1→v4 迁移表已明确“`foreignCageBlockIds` 的硬拒绝检查已删除；`avoid_blocks` 只是搜索偏好；force/兜底仍可覆盖；0.1.0 的‘外来笼不可覆盖’不再保证”。这是用户选择的 **Critical 2 = D** 的明确记录，不再作为待修项。
-- **Medium 1 已修复**：`docs/home-respawn-design.md:412` 改为“24 条非 TF `force_place:false`；8 条 TF `force_place:true`，直接放 `HomePos+[0,-1,1]`，不再用 `place_delay_ticks`，改为等待 `remove(KILLED)`”。
+- **Medium 1 已修复**：`docs/home-respawn-design.md:412` 改为“22 条非 TF `force_place:false`；8 条 TF `force_place:true`，直接放 `HomePos+[0,-1,1]`，不再用 `place_delay_ticks`，改为等待 `remove(KILLED)`”。
 - **Medium 2 已修复**：B 方案设计状态改为最终版；正文统一为 `[0,-1,1]`、`placement.force_place:true`、巫妖/其余 7 条 `spawner_offset`、force 替换箱子的最终规则；`106` 改为 `116`；“实机待用户”改为 2026-11-03/04 已完成。
 - **Medium 3 已修复**：`README.md:389` 已改为“搜索路径唯一会主动放弃的分支”，并列出 `keep_existing`/TF 锚点/维度/写入失败等停止路径。
 - **Medium 4 已修复/记录**：`docs/bosses-rise-mapping.md:74` 已把原版箱子避让标为“2026-11-04 明确接受的设计限制”，不再写“等你确认”；修复计划第 12 节的“均已改”已改为历史记录并指向第 13/14 节最终版。

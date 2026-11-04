@@ -409,7 +409,7 @@ v3 的实现是：
 | 全局 `compat.protectedBlockIds` 默认含 `cataclysm:boss_respawner` | **配置项与字段一并删除**；该 id 改为写进每条规则的 `avoid_blocks` |
 | 失败模式：笼子完全不出现（ABANDON） | 失败模式：笼子落在被避让方块**上面**（可接受） |
 
-**被明确接受的代价：** `force_place: true` 与 `search_failure_fallback: true` 现在可以覆盖任何方块（含箱子、基岩、别的模组的刷怪笼），旧方块及其内容蒸发、不掉落。接受它的理由是这两条路径的语义本来就是"无论如何都必须把笼子放出来"，而它们的触发条件很窄（见 §5.4）。**截至 2026-11-03 的最终版：24 条非 TF 内置规则为 `force_place: false`；8 条暮色森林主线为 `force_place: true`，直接放 `HomePos+[0,-1,1]`，不再用 `place_delay_ticks`（改为等待实体 `remove(KILLED)`），因此 `force_place` 的代价对 TF 是明确接受的；其余 24 条仍走搜索并保留 `place_delay_ticks` 等过死亡动画与战利品箱。**
+**被明确接受的代价：** `force_place: true` 与 `search_failure_fallback: true` 现在可以覆盖任何方块（含箱子、基岩、别的模组的刷怪笼），旧方块及其内容蒸发、不掉落。接受它的理由是这两条路径的语义本来就是"无论如何都必须把笼子放出来"，而它们的触发条件很窄（见 §5.4）。**截至 2026-11-04 的最终版：22 条非 TF 内置规则为 `force_place: false`；8 条暮色森林主线为 `force_place: true`，直接放 `HomePos+[0,-1,1]`，不再用 `place_delay_ticks`（改为等待实体 `remove(KILLED)`），因此 `force_place` 的代价对 TF 是明确接受的；其余 22 条仍走搜索并保留 `place_delay_ticks` 等过死亡动画与战利品箱。**
 
 **给后来者的约束：**
 1. 不要重新引入 `protected_blocks`、`PROTECTED_BLOCK_IDS` 或任何"写入前的保护拒绝"分支——它会立刻重建上面那条 ABANDON 链路；
@@ -429,7 +429,7 @@ v3 的 `placement.<mode>.protected_blocks` **不会**被 v4 解析（残留的�
 "avoid_blocks": ["cataclysm:boss_respawner", "twilightforest:dark_chest", "..."]
 ```
 
-内置条目的实际结果：暮色森林 9 条各 18 项（17 种箱子 + `cataclysm:boss_respawner`），其余模组各 1 项（`cataclysm:boss_respawner`）。完整对照表见 [README 的 v3 → v4 迁移表](../../README.md#v3--v4)。
+内置条目的实际结果：暮色森林 9 条各 18 项（17 种箱子 + `cataclysm:boss_respawner`），其余模组各 1 项（`cataclysm:boss_respawner`）。完整对照表见 [README 的 v3 → v4 迁移表](../README.md#v3--v4)。
 
 ### 5.6 duplicate 与同一 Home 冲突
 

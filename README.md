@@ -169,7 +169,7 @@ data/<namespace>/boss_respawner/entries/<任意文件名>.json
 
 | 模式 | 锚点 | 说明 |
 |---|---|---|
-| `home` | 本模组登记的出生点 | 其余 24 条内置规则使用此模式（含谜题羊）。重生笼会回到 Boss 原本所在的竞技场/结构，而不是它倒下的地方。 |
+| `home` | 本模组登记的出生点 | 其余 22 条内置规则使用此模式（含谜题羊）。重生笼会回到 Boss 原本所在的竞技场/结构，而不是它倒下的地方。 |
 | `death` | 生物死亡位置 | 传统行为。适合没有固定竞技场的 Boss。 |
 | `twilightforest` | 暮色森林实体的 `HomePos` | 8 条暮色森林主线 Boss 使用此模式。死亡后先等实体 `remove(KILLED)`（奖励箱已生成），再把笼子强制放在 `HomePos + [0,-1,1]`（与奖励箱同一水平面）；`require_ground: false`、`placement.force_place: true`；8 条的刷怪笼都保留 `spawn.transform.force_place: true`，巫妖 `spawner_offset:[0,-1,0]`，其余 7 条 `[0,0,0]`。 |
 

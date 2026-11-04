@@ -65,7 +65,7 @@
 | 核对项 | 结果 |
 |---|---|
 | 是否有自己的箱子方块 | ❌ 没有（`blockstates` 下不存在任何 chest / crate / barrel 方块），结构使用原版 `minecraft:chest` |
-| 是否有装着 BOSS 物品的箱子表 | ❌ 5 个 `chests/*.json`（`dragon_tower` / `dragon_tower_common` / `underworld_arena_common` / `_rare` / `_vault` / `_trash`）**都不含** `dragon_bone` / `dragon_skull` / `sandworm_gauntlet` / `knight_sword` / `ice_gauntlet` / `kraken_tooth` |
+| 是否有装着 BOSS 物品的箱子表 | ❌ 6 个 `chests/*.json`（`dragon_tower` / `dragon_tower_common` / `underworld_arena_common` / `_rare` / `_vault` / `_trash`）**都不含** `dragon_bone` / `dragon_skull` / `sandworm_gauntlet` / `knight_sword` / `ice_gauntlet` / `kraken_tooth` |
 | BOSS 战利品如何发放 | 战利品表为 `"type": "minecraft:entity"` —— **直接掉物品** |
 | 唯一的箱类来源 | `spawners/ancient_trial_key.json`（`"type": "minecraft:chest"`），它装的是**钥匙本身**，不是 BOSS 战利品 |
 
