@@ -10,9 +10,11 @@
 
 - **Mod名：** `通用Boss重生笼`
 - **ModID：** `boss_respawner`
+- **版本：** `0.2.0`
 - **环境：** Minecraft 1.21.1 / NeoForge 21.1.219 / Java 21
 - **定位：** 独立模组，不强依赖 Cataclysm 或任何具体 Boss 模组。
 - **文档索引：** [docs/README.md](docs/README.md)（当前有效文档与历史文档的边界）
+- **更新日志：** [CHANGELOG.md](CHANGELOG.md)
 
 ---
 

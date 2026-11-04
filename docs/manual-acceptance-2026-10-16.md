@@ -2,7 +2,7 @@
 
 > **执行状态（2026-11-04）：** 2026-11-03/04 已在专用测试整合包完成 8 个暮色森林主线 Boss + 谜题羊 + 四个联动模组的实机测试（High 1 数值、High 2 Peaceful、Medium 4 跨维度、Medium 5 建筑高度外均验证）；Critical 1/High 3/Medium 5 的日志复核见 [2026-11-03 审查报告](reviews/2026-11-03-code-review-0.1.0-to-f1cb657.md)。下表历史勾选未逐项补填。
 
-**被测版本：** `boss_respawner-0.1.0.jar`（`gradlew build` 产物，SHA 见交付报告）
+**被测版本：** `boss_respawner-0.2.0.jar`（`gradlew build` 产物；验收记录基于 0.1.0 测试包，0.2.0 为版本号/文档更新后的发布版本）
 **目标环境：** Minecraft 1.21.1 / NeoForge 21.1.219 / Java 21
 **配套测试数据包：** [`docs/examples/acceptance-datapack/`](examples/acceptance-datapack/)
 **覆盖来源：** 执行文档「三、测试与验收标准 → 行为验收」全部 21 条，加上实现特有的若干条
@@ -23,7 +23,7 @@
 
 ### 0.1 安装
 
-1. 构建产物：`build/libs/boss_respawner-0.1.0.jar` → 丢进整合包的 `mods/`。
+1. 构建产物：`build/libs/boss_respawner-0.2.0.jar` → 丢进整合包的 `mods/`。
 2. 建议同时装 **Cataclysm**（用于 C6 共存回归，以及 P6 里"强制放置确实会覆盖灾变祭坛"这一条 —— v4 已删除保护底线，祭坛不再是例外）。用 `gradlew runClient` 启动时会自动带上 `build.gradle` 里声明的可选依赖（灾变 / 传奇怪物 / Mowzie's / 暮色森林 / 首领崛起）。
 
 ### 0.2 打开调试日志（**强烈建议，本清单大部分证据来自日志**）
