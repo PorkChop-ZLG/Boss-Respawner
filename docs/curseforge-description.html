@@ -1,0 +1,197 @@
+<!-- CurseForge project description (WYSIWYG/HTML fragment). Paste into the description editor. No images, icons, or external links. -->
+<h2>Universal Boss Respawner</h2>
+
+<p><strong>A standalone, data-driven revival system for bosses and mobs from other mods.</strong></p>
+
+<p>This mod extracts Cataclysm's Boss Respawner into an independent system that can revive bosses and mobs from other mods — and it is fully data-driven. <strong>Cataclysm is not required.</strong></p>
+
+<p>Have you ever found a boss structure on a server, only to discover that the boss has already been defeated, leaving you to search for another one? This mod solves that problem.</p>
+
+<p>Designed for modpack authors and server owners: create a data pack following the documented format, and a configured boss will generate a Boss Respawner cage when defeated. Use the configured revival item to summon the boss again, turning formerly one-time bosses into repeatable encounters.</p>
+
+<hr>
+
+<h2>Built-in Mod Support</h2>
+
+<p>The mod ships with 30 rules. Boss names and revival items are listed below; the matching item IDs are in the built-in JSON files.</p>
+
+<h3>Twilight Forest</h3>
+
+<table>
+  <thead>
+    <tr><th>Boss</th><th>Revival Item</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Naga</td><td>Magic Map Focus</td></tr>
+    <tr><td>Twilight Lich</td><td>Magic Map Focus</td></tr>
+    <tr><td>Minoshroom</td><td>Magic Map Focus</td></tr>
+    <tr><td>Hydra</td><td>Magic Map Focus</td></tr>
+    <tr><td>Phantom Knight</td><td>Magic Map Focus</td></tr>
+    <tr><td>Ur-Ghast</td><td>Magic Map Focus</td></tr>
+    <tr><td>Alpha Yeti</td><td>Magic Map Focus</td></tr>
+    <tr><td>Snow Queen</td><td>Magic Map Focus</td></tr>
+    <tr><td>Quest Ram</td><td>Magic Map Focus</td></tr>
+  </tbody>
+</table>
+
+<p>The eight progression bosses use Twilight Forest's own <code>HomePos</code> anchor. The cage is placed beside the boss's reward chest after the chest has spawned; the Lich replaces its chest with its spawner, so collect the loot first.</p>
+
+<h3>Legendary Monsters</h3>
+
+<table>
+  <thead>
+    <tr><th>Boss</th><th>Revival Item</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Cloud Golem</td><td>Eye of Air</td></tr>
+    <tr><td>Possessed Paladin</td><td>Eye of Ghost</td></tr>
+    <tr><td>Annihilation Pursuer</td><td>Eye of Annihilation</td></tr>
+    <tr><td>Beheaded Knight</td><td>Eye of Ghost</td></tr>
+    <tr><td>Resurrected Knight</td><td>Eye of Ghost</td></tr>
+    <tr><td>Dune Sentinel</td><td>Eye of Sandstorm</td></tr>
+    <tr><td>Frostbitten Golem</td><td>Eye of Frost</td></tr>
+    <tr><td>Overgrown Colossus</td><td>Eye of Moss</td></tr>
+    <tr><td>Ancient Guardian</td><td>Eye of Many Ribs</td></tr>
+    <tr><td>Lava Eater</td><td>Eye of Magma</td></tr>
+    <tr><td>Skeletosaurus</td><td>Eye of Bones</td></tr>
+    <tr><td>Withered Abomination</td><td>Eye of Soul</td></tr>
+    <tr><td>Endersent</td><td>Eye of Chorus</td></tr>
+    <tr><td>Shulker Mimic</td><td>Eye of Shulker</td></tr>
+  </tbody>
+</table>
+
+<p>The Obliterator is a summoned boss and does not need a respawn cage.</p>
+
+<h3>Mowzie's Mobs</h3>
+
+<table>
+  <thead>
+    <tr><th>Boss</th><th>Revival Item</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Ferrous Wroughtnaut</td><td>Captured Grottol</td></tr>
+    <tr><td>Frostmaw</td><td>Glowing Jelly</td></tr>
+    <tr><td>Umvuthi</td><td>Naga Fang</td></tr>
+    <tr><td>Sculptor</td><td>Bluff Rod</td></tr>
+  </tbody>
+</table>
+
+<h3>Bosses Rise</h3>
+
+<table>
+  <thead>
+    <tr><th>Boss</th><th>Revival Item</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Ashlord, The Infernal Dragon</td><td>Ancient Trial Key</td></tr>
+    <tr><td>Sirok, The Sandworm</td><td>Ancient Trial Key</td></tr>
+    <tr><td>Helvar, the Underworld Knight</td><td>Ancient Trial Key</td></tr>
+  </tbody>
+</table>
+
+<p>Bosses Rise's Yeti and Kraken are not supported: their custom death and ship-anchor logic cannot be reproduced reliably by a static cage.</p>
+
+<hr>
+
+<h2>Jade Integration</h2>
+
+<p>Jade is optional. When it is installed, looking at a respawn cage shows:</p>
+
+<ul>
+  <li>the boss it will revive;</li>
+  <li>the required key item, with the amount when more than one is needed.</li>
+</ul>
+
+<p>The information works on multiplayer servers and needs no extra configuration.</p>
+
+<hr>
+
+<h2>Data-Driven: Add Any Boss</h2>
+
+<p>Every rule is a JSON file. You can support a boss from another mod without writing Java code.</p>
+
+<h3>1. Create a data pack</h3>
+
+<p>Create a normal data pack with a <code>pack.mcmeta</code> file:</p>
+
+<pre><code>{
+  "pack": {
+    "pack_format": 48,
+    "description": "My Boss Respawner rules"
+  }
+}</code></pre>
+
+<p><code>pack_format</code> 48 is for Minecraft 1.21.1.</p>
+
+<h3>2. Add a rule</h3>
+
+<p>Place the rule at:</p>
+
+<pre><code>data/my_pack/boss_respawner/entries/my_boss.json</code></pre>
+
+<p>A minimal rule looks like this:</p>
+
+<pre><code>{
+  "schema_version": 4,
+  "entity": "modid:boss",
+  "activation": {
+    "item": "modid:key"
+  },
+  "placement": {
+    "mode": "home",
+    "home": {}
+  },
+  "spawn": {
+    "mode": "summon",
+    "summon": {}
+  }
+}</code></pre>
+
+<p>Replace <code>modid:boss</code> and <code>modid:key</code> with the IDs from the boss mod. <code>home</code> returns the boss to where it was first observed; use <code>"mode": "death"</code> with a <code>death</code> object if the boss has no fixed arena. Omit optional fields to use defaults.</p>
+
+<h3>3. Reload and test</h3>
+
+<p>Put the data pack in the world's <code>datapacks</code> folder and run <code>/reload</code>. Add the rule before the boss is first seen; reloading also registers currently loaded bosses. Use the built-in JSON files as complete templates.</p>
+
+<hr>
+
+<h2>Installation</h2>
+
+<ul>
+  <li><strong>Minecraft:</strong> 1.21.1</li>
+  <li><strong>Loader:</strong> NeoForge 21.1.219 or newer</li>
+  <li><strong>Java:</strong> 21</li>
+  <li>Install on both the client and the server.</li>
+  <li>Cataclysm, Twilight Forest, Legendary Monsters, Mowzie's Mobs, Bosses Rise, and Jade are all optional.</li>
+  <li>The respawn cage is an admin/creative block: it is not craftable or breakable in survival. Use <code>/give</code> or the creative spawn-egg tab when setting up an arena.</li>
+</ul>
+
+<h2>Configuration</h2>
+
+<p>The common config includes:</p>
+
+<ul>
+  <li>a master switch for new placement and spawning;</li>
+  <li>a glowing outline for cages, with adjustable range;</li>
+  <li>debug logging.</li>
+</ul>
+
+<p>Per-rule settings live in the JSON: placement mode, search ranges, key item, spawn count, duplicate handling, and more. The defaults work out of the box.</p>
+
+<hr>
+
+<h2>Good to Know</h2>
+
+<ul>
+  <li>Cataclysm is not required; it is only the inspiration for the original respawner concept.</li>
+  <li>Bosses Rise's Yeti and Kraken are intentionally unsupported and have no built-in rules.</li>
+  <li>The Lich's reward chest is replaced by its spawner; loot it before activating the cage.</li>
+  <li>Cages cannot be broken in survival. Test custom placements before putting them on a live server.</li>
+  <li>Rules for mods that are not installed are skipped safely.</li>
+</ul>
+
+<h2>Credits</h2>
+
+<p>Inspired by Cataclysm's boss respawner. Thanks to the authors of Cataclysm, Twilight Forest, Legendary Monsters, Mowzie's Mobs, Bosses Rise, and Jade.</p>
+
+<p>All mod names and trademarks belong to their respective owners.</p>

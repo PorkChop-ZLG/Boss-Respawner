@@ -8,6 +8,8 @@
 |---|---|
 | [README.md](../README.md) | 玩家/整合包作者的主文档：JSON schema、三种放置模式、`avoid_blocks`、Home/TF 规则 |
 | [CHANGELOG.md](../CHANGELOG.md) | 版本更新日志（0.1.0 → 0.2.0） |
+| [curseforge-description.html](curseforge-description.html) | English CurseForge description, WYSIWYG/HTML fragment |
+| [curseforge-description.md](curseforge-description.md) | Markdown backup of the CurseForge description |
 | [home-respawn-design.md](home-respawn-design.md) | v4 基础设计：`death` / `home`、两趟搜索、defer、Home 登记 |
 | [plans/2026-11-02-twilightforest-placement-mode-design.md](plans/2026-11-02-twilightforest-placement-mode-design.md) | 暮色森林 B 方案最终设计（8 条 force、`[0,-1,1]`、巫妖 `[0,-1,0]`、其余 7 条 `[0,0,0]`） |
 | [plans/2026-11-02-twilightforest-mode-fix-plan.md](plans/2026-11-02-twilightforest-mode-fix-plan.md) | TF 修复迭代记录；**最终行为见第 14 节**，第 10-13 节保留为历史 |
